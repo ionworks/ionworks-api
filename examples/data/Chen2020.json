@@ -1,0 +1,817 @@
+{
+  "Ideal gas constant [J.K-1.mol-1]": 8.31446261815324,
+  "Faraday constant [C.mol-1]": 96485.33212331001,
+  "Boltzmann constant [J.K-1]": 1.380649e-23,
+  "Electron charge [C]": 1.602176634e-19,
+  "Ratio of lithium moles to SEI moles": 2.0,
+  "SEI partial molar volume [m3.mol-1]": 9.585e-05,
+  "SEI reaction exchange current density [A.m-2]": 1.5e-07,
+  "SEI resistivity [Ohm.m]": 200000.0,
+  "SEI solvent diffusivity [m2.s-1]": 2.5e-22,
+  "Bulk solvent concentration [mol.m-3]": 2636.0,
+  "SEI open-circuit potential [V]": 0.4,
+  "SEI electron conductivity [S.m-1]": 8.95e-14,
+  "SEI lithium interstitial diffusivity [m2.s-1]": 1e-20,
+  "Lithium interstitial reference concentration [mol.m-3]": 15.0,
+  "Initial SEI thickness [m]": 5e-09,
+  "EC initial concentration in electrolyte [mol.m-3]": 4541.0,
+  "EC diffusivity [m2.s-1]": 2e-18,
+  "SEI kinetic rate constant [m.s-1]": 1e-12,
+  "SEI growth activation energy [J.mol-1]": 0.0,
+  "Negative electrode reaction-driven LAM factor [m3.mol-1]": 0.0,
+  "Positive electrode reaction-driven LAM factor [m3.mol-1]": 0.0,
+  "Negative current collector thickness [m]": 1.2e-05,
+  "Negative electrode thickness [m]": 8.52e-05,
+  "Separator thickness [m]": 1.2e-05,
+  "Positive electrode thickness [m]": 7.56e-05,
+  "Positive current collector thickness [m]": 1.6e-05,
+  "Electrode height [m]": 0.065,
+  "Electrode width [m]": 1.58,
+  "Cell cooling surface area [m2]": 0.00531,
+  "Cell volume [m3]": 2.42e-05,
+  "Cell thermal expansion coefficient [m.K-1]": 1.1e-06,
+  "Negative current collector conductivity [S.m-1]": 58411000.0,
+  "Positive current collector conductivity [S.m-1]": 36914000.0,
+  "Negative current collector density [kg.m-3]": 8960.0,
+  "Positive current collector density [kg.m-3]": 2700.0,
+  "Negative current collector specific heat capacity [J.kg-1.K-1]": 385.0,
+  "Positive current collector specific heat capacity [J.kg-1.K-1]": 897.0,
+  "Negative current collector thermal conductivity [W.m-1.K-1]": 401.0,
+  "Positive current collector thermal conductivity [W.m-1.K-1]": 237.0,
+  "Nominal cell capacity [A.h]": 5.0,
+  "Current function [A]": 5.0,
+  "Contact resistance [Ohm]": 0,
+  "Negative electrode conductivity [S.m-1]": 215.0,
+  "Maximum concentration in negative electrode [mol.m-3]": 33133.0,
+  "Negative particle diffusivity [m2.s-1]": 3.3e-14,
+  "Negative electrode OCP [V]": {
+    "type": "ExpressionFunctionParameter",
+    "name": "Negative electrode OCP [V]",
+    "children": [
+      {
+        "type": "Subtraction",
+        "children": [
+          {
+            "type": "Subtraction",
+            "children": [
+              {
+                "type": "Subtraction",
+                "children": [
+                  {
+                    "type": "Addition",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": 0.2482
+                      },
+                      {
+                        "type": "Multiplication",
+                        "children": [
+                          {
+                            "type": "Scalar",
+                            "value": 1.9793
+                          },
+                          {
+                            "type": "Exp",
+                            "children": [
+                              {
+                                "type": "Multiplication",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": -39.3631
+                                  },
+                                  {
+                                    "type": "Parameter",
+                                    "name": "sto"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Multiplication",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": 0.0909
+                      },
+                      {
+                        "type": "Tanh",
+                        "children": [
+                          {
+                            "type": "Addition",
+                            "children": [
+                              {
+                                "type": "Scalar",
+                                "value": -3.68395892
+                              },
+                              {
+                                "type": "Multiplication",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": 29.8538
+                                  },
+                                  {
+                                    "type": "Parameter",
+                                    "name": "sto"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Scalar",
+                    "value": 0.04478
+                  },
+                  {
+                    "type": "Tanh",
+                    "children": [
+                      {
+                        "type": "Addition",
+                        "children": [
+                          {
+                            "type": "Scalar",
+                            "value": -4.1302127099999995
+                          },
+                          {
+                            "type": "Multiplication",
+                            "children": [
+                              {
+                                "type": "Scalar",
+                                "value": 14.9159
+                              },
+                              {
+                                "type": "Parameter",
+                                "name": "sto"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Multiplication",
+            "children": [
+              {
+                "type": "Scalar",
+                "value": 0.0205
+              },
+              {
+                "type": "Tanh",
+                "children": [
+                  {
+                    "type": "Addition",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": -18.58021732
+                      },
+                      {
+                        "type": "Multiplication",
+                        "children": [
+                          {
+                            "type": "Scalar",
+                            "value": 30.4444
+                          },
+                          {
+                            "type": "Parameter",
+                            "name": "sto"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "func_name": "graphite_LGM50_ocp_Chen2020",
+    "func_args": [
+      "sto"
+    ]
+  },
+  "Negative electrode porosity": 0.25,
+  "Negative electrode active material volume fraction": 0.75,
+  "Negative particle radius [m]": 5.86e-06,
+  "Negative electrode Bruggeman coefficient (electrolyte)": 1.5,
+  "Negative electrode Bruggeman coefficient (electrode)": 0,
+  "Negative electrode charge transfer coefficient": 0.5,
+  "Negative electrode double-layer capacity [F.m-2]": 0.2,
+  "Negative electrode exchange-current density [A.m-2]": {
+    "type": "ExpressionFunctionParameter",
+    "name": "Negative electrode exchange-current density [A.m-2]",
+    "children": [
+      {
+        "type": "Multiplication",
+        "children": [
+          {
+            "type": "Multiplication",
+            "children": [
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Multiplication",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": 6.48e-07
+                      },
+                      {
+                        "type": "Exp",
+                        "children": [
+                          {
+                            "type": "Multiplication",
+                            "children": [
+                              {
+                                "type": "Division",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": 35000.0
+                                  },
+                                  {
+                                    "type": "Scalar",
+                                    "value": 8.31446261815324
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "Subtraction",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": 0.0033540164346805303
+                                  },
+                                  {
+                                    "type": "Division",
+                                    "children": [
+                                      {
+                                        "type": "Scalar",
+                                        "value": 1.0
+                                      },
+                                      {
+                                        "type": "Parameter",
+                                        "name": "T"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Power",
+                    "children": [
+                      {
+                        "type": "Parameter",
+                        "name": "c_e"
+                      },
+                      {
+                        "type": "Scalar",
+                        "value": 0.5
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "Power",
+                "children": [
+                  {
+                    "type": "Parameter",
+                    "name": "c_s_surf"
+                  },
+                  {
+                    "type": "Scalar",
+                    "value": 0.5
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Power",
+            "children": [
+              {
+                "type": "Subtraction",
+                "children": [
+                  {
+                    "type": "Parameter",
+                    "name": "c_s_max"
+                  },
+                  {
+                    "type": "Parameter",
+                    "name": "c_s_surf"
+                  }
+                ]
+              },
+              {
+                "type": "Scalar",
+                "value": 0.5
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "func_name": "graphite_LGM50_electrolyte_exchange_current_density_Chen2020",
+    "func_args": [
+      "c_e",
+      "c_s_surf",
+      "c_s_max",
+      "T"
+    ]
+  },
+  "Negative electrode density [kg.m-3]": 1657.0,
+  "Negative electrode specific heat capacity [J.kg-1.K-1]": 700.0,
+  "Negative electrode thermal conductivity [W.m-1.K-1]": 1.7,
+  "Negative electrode OCP entropic change [V.K-1]": 0.0,
+  "Positive electrode conductivity [S.m-1]": 0.18,
+  "Maximum concentration in positive electrode [mol.m-3]": 63104.0,
+  "Positive particle diffusivity [m2.s-1]": 4e-15,
+  "Positive electrode OCP [V]": {
+    "type": "ExpressionFunctionParameter",
+    "name": "Positive electrode OCP [V]",
+    "children": [
+      {
+        "type": "Addition",
+        "children": [
+          {
+            "type": "Subtraction",
+            "children": [
+              {
+                "type": "Subtraction",
+                "children": [
+                  {
+                    "type": "Addition",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": 4.4875
+                      },
+                      {
+                        "type": "Multiplication",
+                        "children": [
+                          {
+                            "type": "Scalar",
+                            "value": -0.809
+                          },
+                          {
+                            "type": "Parameter",
+                            "name": "sto"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Multiplication",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": 0.0428
+                      },
+                      {
+                        "type": "Tanh",
+                        "children": [
+                          {
+                            "type": "Addition",
+                            "children": [
+                              {
+                                "type": "Scalar",
+                                "value": -10.26034796
+                              },
+                              {
+                                "type": "Multiplication",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": 18.5138
+                                  },
+                                  {
+                                    "type": "Parameter",
+                                    "name": "sto"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Scalar",
+                    "value": 17.7326
+                  },
+                  {
+                    "type": "Tanh",
+                    "children": [
+                      {
+                        "type": "Addition",
+                        "children": [
+                          {
+                            "type": "Scalar",
+                            "value": -4.921431299999999
+                          },
+                          {
+                            "type": "Multiplication",
+                            "children": [
+                              {
+                                "type": "Scalar",
+                                "value": 15.789
+                              },
+                              {
+                                "type": "Parameter",
+                                "name": "sto"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Multiplication",
+            "children": [
+              {
+                "type": "Scalar",
+                "value": 17.5842
+              },
+              {
+                "type": "Tanh",
+                "children": [
+                  {
+                    "type": "Addition",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": -4.9704096
+                      },
+                      {
+                        "type": "Multiplication",
+                        "children": [
+                          {
+                            "type": "Scalar",
+                            "value": 15.9308
+                          },
+                          {
+                            "type": "Parameter",
+                            "name": "sto"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "func_name": "nmc_LGM50_ocp_Chen2020",
+    "func_args": [
+      "sto"
+    ]
+  },
+  "Positive electrode porosity": 0.335,
+  "Positive electrode active material volume fraction": 0.665,
+  "Positive particle radius [m]": 5.22e-06,
+  "Positive electrode Bruggeman coefficient (electrolyte)": 1.5,
+  "Positive electrode Bruggeman coefficient (electrode)": 0,
+  "Positive electrode charge transfer coefficient": 0.5,
+  "Positive electrode double-layer capacity [F.m-2]": 0.2,
+  "Positive electrode exchange-current density [A.m-2]": {
+    "type": "ExpressionFunctionParameter",
+    "name": "Positive electrode exchange-current density [A.m-2]",
+    "children": [
+      {
+        "type": "Multiplication",
+        "children": [
+          {
+            "type": "Multiplication",
+            "children": [
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Multiplication",
+                    "children": [
+                      {
+                        "type": "Scalar",
+                        "value": 3.42e-06
+                      },
+                      {
+                        "type": "Exp",
+                        "children": [
+                          {
+                            "type": "Multiplication",
+                            "children": [
+                              {
+                                "type": "Division",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": 17800.0
+                                  },
+                                  {
+                                    "type": "Scalar",
+                                    "value": 8.31446261815324
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "Subtraction",
+                                "children": [
+                                  {
+                                    "type": "Scalar",
+                                    "value": 0.0033540164346805303
+                                  },
+                                  {
+                                    "type": "Division",
+                                    "children": [
+                                      {
+                                        "type": "Scalar",
+                                        "value": 1.0
+                                      },
+                                      {
+                                        "type": "Parameter",
+                                        "name": "T"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Power",
+                    "children": [
+                      {
+                        "type": "Parameter",
+                        "name": "c_e"
+                      },
+                      {
+                        "type": "Scalar",
+                        "value": 0.5
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "Power",
+                "children": [
+                  {
+                    "type": "Parameter",
+                    "name": "c_s_surf"
+                  },
+                  {
+                    "type": "Scalar",
+                    "value": 0.5
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Power",
+            "children": [
+              {
+                "type": "Subtraction",
+                "children": [
+                  {
+                    "type": "Parameter",
+                    "name": "c_s_max"
+                  },
+                  {
+                    "type": "Parameter",
+                    "name": "c_s_surf"
+                  }
+                ]
+              },
+              {
+                "type": "Scalar",
+                "value": 0.5
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "func_name": "nmc_LGM50_electrolyte_exchange_current_density_Chen2020",
+    "func_args": [
+      "c_e",
+      "c_s_surf",
+      "c_s_max",
+      "T"
+    ]
+  },
+  "Positive electrode density [kg.m-3]": 3262.0,
+  "Positive electrode specific heat capacity [J.kg-1.K-1]": 700.0,
+  "Positive electrode thermal conductivity [W.m-1.K-1]": 2.1,
+  "Positive electrode OCP entropic change [V.K-1]": 0.0,
+  "Separator porosity": 0.47,
+  "Separator Bruggeman coefficient (electrolyte)": 1.5,
+  "Separator density [kg.m-3]": 397.0,
+  "Separator specific heat capacity [J.kg-1.K-1]": 700.0,
+  "Separator thermal conductivity [W.m-1.K-1]": 0.16,
+  "Initial concentration in electrolyte [mol.m-3]": 1000.0,
+  "Cation transference number": 0.2594,
+  "Thermodynamic factor": 1.0,
+  "Electrolyte diffusivity [m2.s-1]": {
+    "type": "ExpressionFunctionParameter",
+    "name": "Electrolyte diffusivity [m2.s-1]",
+    "children": [
+      {
+        "type": "Addition",
+        "children": [
+          {
+            "type": "Scalar",
+            "value": 4.862e-10
+          },
+          {
+            "type": "Subtraction",
+            "children": [
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Scalar",
+                    "value": 8.793999999999999e-17
+                  },
+                  {
+                    "type": "Power",
+                    "children": [
+                      {
+                        "type": "Parameter",
+                        "name": "c_e"
+                      },
+                      {
+                        "type": "Scalar",
+                        "value": 2.0
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Scalar",
+                    "value": 3.972e-13
+                  },
+                  {
+                    "type": "Parameter",
+                    "name": "c_e"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "func_name": "electrolyte_diffusivity_Nyman2008",
+    "func_args": [
+      "c_e",
+      "T"
+    ]
+  },
+  "Electrolyte conductivity [S.m-1]": {
+    "type": "ExpressionFunctionParameter",
+    "name": "Electrolyte conductivity [S.m-1]",
+    "children": [
+      {
+        "type": "Addition",
+        "children": [
+          {
+            "type": "Subtraction",
+            "children": [
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Scalar",
+                    "value": 1.2970000000000003e-10
+                  },
+                  {
+                    "type": "Power",
+                    "children": [
+                      {
+                        "type": "Parameter",
+                        "name": "c_e"
+                      },
+                      {
+                        "type": "Scalar",
+                        "value": 3.0
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "Multiplication",
+                "children": [
+                  {
+                    "type": "Scalar",
+                    "value": 7.937316927022632e-05
+                  },
+                  {
+                    "type": "Power",
+                    "children": [
+                      {
+                        "type": "Parameter",
+                        "name": "c_e"
+                      },
+                      {
+                        "type": "Scalar",
+                        "value": 1.5
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Multiplication",
+            "children": [
+              {
+                "type": "Scalar",
+                "value": 0.0033290000000000004
+              },
+              {
+                "type": "Parameter",
+                "name": "c_e"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "func_name": "electrolyte_conductivity_Nyman2008",
+    "func_args": [
+      "c_e",
+      "T"
+    ]
+  },
+  "Reference temperature [K]": 298.15,
+  "Total heat transfer coefficient [W.m-2.K-1]": 10.0,
+  "Ambient temperature [K]": 298.15,
+  "Number of electrodes connected in parallel to make a cell": 1.0,
+  "Number of cells connected in series to make a battery": 1.0,
+  "Lower voltage cut-off [V]": 2.5,
+  "Upper voltage cut-off [V]": 4.2,
+  "Open-circuit voltage at 0% SOC [V]": 2.5,
+  "Open-circuit voltage at 100% SOC [V]": 4.2,
+  "Initial concentration in negative electrode [mol.m-3]": 29866.0,
+  "Initial concentration in positive electrode [mol.m-3]": 17038.0,
+  "Initial temperature [K]": 298.15,
+  "citations": [
+    "Chen2020"
+  ]
+}
