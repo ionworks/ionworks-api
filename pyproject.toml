@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ionworks-api"
+version = "0.27.0"
+description = "Python client for interacting with the Ionworks API"
+authors = []
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.34.2",
+    "pydantic>=2.13.4,<3",
+    "pandas>=2.0",
+    "polars>=1.43.0",
+    "numpy>=2.0.0",
+    "ionworks-schema>=0.4.0",
+    "pybamm>=26.7.1.0",
+    "pyarrow>=14.0.0",
+    "scipy>=1.13",
+]
+
+[project.scripts]
+ionworks = "ionworks._skills_cli:main"
+
+[project.urls]
+Homepage = "https://ionworks.com"
+Documentation = "https://packages.docs.ionworks.com/ionworks-api/"
+Repository = "https://github.com/ionworks/ionworks-api"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.0",
+    "types-requests>=2.31.0",
+]
+docs = ["sphinx>=7.0.0", "furo", "myst-nb>=1.0.0"]
+
+[tool.uv.sources]
+ionworks-schema = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["ionworks"]
+
+[tool.hatch.build.targets.sdist]
+packages = ["ionworks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
