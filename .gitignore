@@ -1,0 +1,18 @@
+.mypy_cache
+.pytest_cache
+.venv
+.env*
+!.env.example
+.ruff_cache
+.vscode
+__pycache__
+.DS_Store
+.idea
+.local
+.cursor/
+.claude/settings.local.json
+uv.lock
+
+# Docs
+docs/_build/
+docs/.jupyter_cache/
