@@ -5,6 +5,7 @@ managing background jobs in the Ionworks platform.
 """
 
 from typing import Any
+import warnings
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -50,8 +51,8 @@ class JobResponse(BaseModel):
 class JobClient:
     """Client for managing asynchronous jobs.
 
-    This class provides methods to create, retrieve, list, and cancel jobs
-    in the Ionworks platform.
+    This class provides methods to retrieve, list, and cancel jobs in the
+    Ionworks platform. Jobs are started by the client for each kind of work.
     """
 
     def __init__(self, client: Any) -> None:
@@ -66,6 +67,14 @@ class JobClient:
 
     def create(self, payload: JobCreationPayload) -> JobResponse:
         """Submit a job using the provided payload.
+
+        .. deprecated::
+            The server no longer accepts direct job submissions, so every call
+            fails with a 410 error. Start work through the dedicated clients
+            instead: ``client.pipeline`` / ``client.simple_pipeline`` for fits
+            and validations, ``client.simulation`` for simulations, and
+            ``client.ecm`` for ECM fits. ``get``, ``list`` and ``cancel`` are
+            unaffected.
 
         Parameters
         ----------
@@ -84,6 +93,13 @@ class JobClient:
         ValueError
             If the response parsing fails.
         """
+        warnings.warn(
+            "JobClient.create is deprecated: the server rejects direct job "
+            "submissions. Use the pipeline, simple_pipeline, simulation or ecm "
+            "clients to start work.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         endpoint = "/jobs/"
         try:
             response_data = self.client.post(

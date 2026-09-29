@@ -9,6 +9,18 @@ see [docs.ionworks.com/changelog](https://docs.ionworks.com/changelog).
 
 <!-- New release sections are prepended below by the release-packages skill. -->
 
+## [0.35.0] - 2026-09-29
+
+### Deprecated
+- `client.job.create()` now emits a `DeprecationWarning`. The server no longer
+  accepts direct job submissions and answers with a 410 error. Start work through
+  `client.pipeline`, `client.simple_pipeline`, `client.simulation` or `client.ecm`.
+  `get`, `list` and `cancel` are unaffected.
+
+### Changed
+- Raised the `pybamm` lower bound to `>=26.9.0.0`, and the `boto3` lower bound in
+  the `large-uploads` extra to `>=1.43.98`.
+
 ## [0.34.0] - 2026-09-24
 
 ### Added
