@@ -9,6 +9,29 @@ see [docs.ionworks.com/changelog](https://docs.ionworks.com/changelog).
 
 <!-- New release sections are prepended below by the release-packages skill. -->
 
+## [0.36.0] - 2026-09-30
+
+### Added
+- Organization membership management on `client.organization`: `members()`,
+  `get_member(email)`, `invite(email, role="Member")`, `set_role(user_id, role)`,
+  `deactivate(user_id)`, `reactivate(user_id)`, `resend_invite(user_id)` and
+  `remove(user_id)`. The new models `OrganizationMember`, `ProjectMembership` and
+  `InviteResult` are exported from `ionworks`.
+- Project membership management on `client.project`: `roles()`,
+  `add_member(project_id, user_id, role=...)`,
+  `invite_member(project_id, email, role=...)`,
+  `update_member(project_id, user_id, role)` and
+  `remove_member(project_id, user_id)`. `role` is a project role name
+  (case-insensitive) or id. The new model `ProjectRoleInfo` is exported from
+  `ionworks`.
+- `client.analysis.create(..., plots=[...])` saves plot presets, which the web
+  app offers as views of the analysis table. `Analysis.plots` returns them, and
+  `update()` accepts `plots`.
+
+### Changed
+- `ProtocolSimulationBatchRequest.max_backward_jumps` documents the server
+  default of 1000 when it is left unset.
+
 ## [0.35.0] - 2026-09-29
 
 ### Deprecated

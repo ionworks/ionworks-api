@@ -162,7 +162,10 @@ class ProtocolSimulationBatchRequest(BaseModel):
     )
     max_backward_jumps: int | None = Field(
         default=None,
-        description="Maximum backward jumps allowed (for goto statements)",
+        description=(
+            "Maximum backward jumps allowed (for goto statements). Defaults "
+            "to 1000 when unset."
+        ),
     )
     study_id: str | None = Field(default=None, description="Optional study UUID")
     project_id: str | None = Field(

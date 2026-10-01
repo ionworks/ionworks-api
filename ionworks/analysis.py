@@ -71,6 +71,7 @@ class AnalysisClient:
         data: DataFrame | dict,
         *,
         columns: list[dict] | None = None,
+        plots: list[dict] | None = None,
         metadata: dict | None = None,
         notes: str | None = None,
     ) -> Analysis:
@@ -96,6 +97,12 @@ class AnalysisClient:
             Column specs describing the parquet for header preview, e.g.
             ``[{"name": "lam_ne", "unit": "%", "dtype": "float"}]``. When
             omitted, no column metadata is sent.
+        plots : list[dict] | None, optional
+            Plot presets the web app offers as views of the table. Each is
+            ``{"x": col, "y": [cols], "y2": [cols], "rows": [{"y": [...],
+            "y2": [...]}], "group_by": text_col, "title": str}``; only ``x`` and
+            one ``y``/``y2`` column are required. When ``columns`` is given, every
+            column a preset names must be among them.
         metadata : dict | None, optional
             Loose metadata (source RPT/cycle identity, extractor parameters,
             etc.). Defaults to an empty object.
@@ -112,6 +119,7 @@ class AnalysisClient:
             "name": name,
             "analysis_type": analysis_type,
             "columns": json.dumps(columns if columns is not None else []),
+            "plots": json.dumps(plots if plots is not None else []),
             "metadata": json.dumps(metadata if metadata is not None else {}),
         }
         if notes is not None:
@@ -292,7 +300,7 @@ class AnalysisClient:
             The analysis UUID.
         data : dict
             Partial update. Any of ``name``, ``analysis_type``, ``columns``,
-            ``metadata``, ``notes``.
+            ``plots``, ``metadata``, ``notes``.
 
         Returns
         -------

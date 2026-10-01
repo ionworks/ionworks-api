@@ -10,8 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 from .models import (
+    InviteResult,
     PaginatedList,
     Project,
+    ProjectRoleInfo,
     _build_endpoint,
     _build_filter_params,
     _parse_list_response,
@@ -167,3 +169,108 @@ class ProjectClient:
         """
         endpoint = f"{self._BASE}/{project_id}"
         self.client.delete(endpoint)
+
+    def roles(self) -> list[ProjectRoleInfo]:
+        """List the project roles that can be granted.
+
+        Returns
+        -------
+        list[ProjectRoleInfo]
+            Each role's ``id``, ``name`` (``"Project Admin"``,
+            ``"Project Contributor"``, ``"Project Viewer"``) and description.
+        """
+        return [ProjectRoleInfo(**row) for row in self.client.get("/roles/project")]
+
+    def _role_id(self, role: str) -> str:
+        """Resolve a project role name (case-insensitive) or id to its id."""
+        roles = self.roles()
+        for r in roles:
+            if role in (r.id, r.name) or role.lower() == r.name.lower():
+                return r.id
+        names = ", ".join(repr(r.name) for r in roles)
+        raise ValueError(f"Unknown project role {role!r}. Choose one of: {names}.")
+
+    def add_member(
+        self, project_id: str, user_id: str, role: str = "Project Contributor"
+    ) -> None:
+        """Grant an organization member a role in a project.
+
+        Also changes the role of someone who is already a project member. The
+        user must already belong to the organization; to invite someone new,
+        use :meth:`invite_member`.
+
+        Parameters
+        ----------
+        project_id : str
+            The project to grant access to.
+        user_id : str
+            The organization member's user id.
+        role : str, optional
+            Project role name or id. Defaults to ``"Project Contributor"``.
+        """
+        self.client.post(
+            f"{self._BASE}/{project_id}/members",
+            {"user_id": user_id, "project_role_id": self._role_id(role)},
+        )
+
+    def invite_member(
+        self, project_id: str, email: str, role: str = "Project Contributor"
+    ) -> InviteResult:
+        """Invite someone to a project by email, adding them to the org if needed.
+
+        A person outside the organization joins it as a ``Member``; an existing
+        member keeps their organization role. Unregistered emails are sent a
+        sign-up invitation.
+
+        Parameters
+        ----------
+        project_id : str
+            The project to grant access to.
+        email : str
+            Email address of the person to invite.
+        role : str, optional
+            Project role name or id. Defaults to ``"Project Contributor"``.
+
+        Returns
+        -------
+        InviteResult
+            The user's id, and whether an invitation email was sent.
+
+        Examples
+        --------
+        >>> client.project.invite_member(project_id, "new.user@example.com")
+        """
+        response = self.client.post(
+            f"{self._BASE}/{project_id}/invites",
+            {"email": email, "project_role_id": self._role_id(role)},
+        )
+        return InviteResult(**response)
+
+    def update_member(self, project_id: str, user_id: str, role: str) -> None:
+        """Change a project member's role.
+
+        Parameters
+        ----------
+        project_id : str
+            The project.
+        user_id : str
+            The member's user id.
+        role : str
+            New project role name or id.
+        """
+        self.client.patch(
+            f"{self._BASE}/{project_id}/members/{user_id}",
+            {"project_role_id": self._role_id(role)},
+        )
+
+    def remove_member(self, project_id: str, user_id: str) -> None:
+        """Remove a user from a project (their organization membership is kept).
+
+        Parameters
+        ----------
+        project_id : str
+            The project.
+        user_id : str
+            The member's user id.
+        """
+        self.client.delete(f"{self._BASE}/{project_id}/members/{user_id}")

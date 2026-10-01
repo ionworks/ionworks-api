@@ -888,6 +888,8 @@ class Analysis(BaseModel):
     name: str
     analysis_type: str
     columns: list[AnalysisColumnSpec] = []
+    #: Plot presets over the table columns; see ``AnalysisClient.create``.
+    plots: list[dict] = []
     metadata: dict = {}
     notes: str | None = None
     source_pipeline_id: str | None = None
@@ -1273,6 +1275,72 @@ class OrganizationUsage(BaseModel):
     period_end: datetime
     simulation: SimulationUsage = SimulationUsage()
     compute: ComputeUsage = ComputeUsage()
+
+
+class ProjectMembership(BaseModel):
+    """A member's role in one project, as listed on :class:`OrganizationMember`."""
+
+    model_config = ConfigDict(extra="allow")
+
+    project_id: str
+    project_role_id: str
+
+
+class OrganizationMember(BaseModel):
+    """A user's membership in the organization.
+
+    Returned by :meth:`~ionworks.organization.OrganizationClient.members`. The
+    raw ``organization_role`` object is flattened into ``role`` (``"Admin"`` or
+    ``"Member"``); ``projects`` lists the projects the member holds a role in.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    email: str | None = None
+    role: str | None = None
+    projects: list[ProjectMembership] = Field(default_factory=list)
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> OrganizationMember:
+        """Build a member from a ``GET /organizations/{id}/users`` row."""
+        org_role = data.get("organization_role") or {}
+        return cls(
+            **{
+                k: v
+                for k, v in data.items()
+                if k not in ("organization_role", "user_project_roles")
+            },
+            role=org_role.get("name"),
+            projects=data.get("user_project_roles") or [],
+        )
+
+
+class InviteResult(BaseModel):
+    """Outcome of adding someone to an organization or project by email."""
+
+    model_config = ConfigDict(extra="allow")
+
+    #: ID of the invited or pre-existing user.
+    user_id: str
+    #: True when a sign-up invitation email was sent; False when the email
+    #: already belonged to an account, which was linked without an email.
+    invite_sent: bool
+    #: True when the user was already an organization member. Their membership,
+    #: including its role, was left unchanged.
+    already_member: bool = False
+    #: Organization role the user holds after the call, when reported.
+    role_name: str | None = None
+
+
+class ProjectRoleInfo(BaseModel):
+    """A project role (e.g. ``"Project Contributor"``) and its permissions."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str
+    description: str | None = None
 
 
 class StepsAndCycles(BaseModel):
