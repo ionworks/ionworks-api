@@ -25,6 +25,36 @@ from .models import (
 )
 
 
+def _reject_legacy_batch(data: dict[str, Any]) -> None:
+    """Refuse the removed free-text ``batch`` field before anything is sent.
+
+    Lots used to be a ``batch`` string on each instance; they are now
+    :class:`~ionworks.models.CellBatch` records that instances reference through
+    ``batch_id``. Sending ``batch`` would otherwise surface as an opaque server
+    validation error (or be dropped), so name the replacement instead.
+
+    Parameters
+    ----------
+    data : dict[str, Any]
+        The instance create or update payload.
+
+    Raises
+    ------
+    ValueError
+        If ``data`` contains a ``batch`` key.
+    """
+    if "batch" not in data:
+        return
+    lot = data["batch"]
+    lot_name = lot if isinstance(lot, str) and lot else "2025-Q1"
+    raise ValueError(
+        "`batch` was removed from cell instances: lots are now their own records. "
+        "Create or look up the lot with "
+        f'client.cell_batch.create_or_get(cell_spec_id, {{"name": "{lot_name}"}}) '
+        "and pass batch_id=<lot>.id instead."
+    )
+
+
 class CellInstanceClient:
     """Client for managing cell instances."""
 
@@ -59,6 +89,7 @@ class CellInstanceClient:
         updated_before: str | None = None,
         order_by: str | None = None,
         order: str | None = None,
+        batch_id: str | None = None,
     ) -> PaginatedList[CellInstance]:
         """List cell instances for a specification with optional filtering.
 
@@ -91,6 +122,9 @@ class CellInstanceClient:
             Column to sort by (``"name"``, ``"created_at"``, ``"updated_at"``).
         order : str | None, optional
             Sort direction: ``"asc"`` or ``"desc"``.
+        batch_id : str | None, optional
+            Return only instances in this cell batch (exact match on
+            ``batch_id``).
 
         Returns
         -------
@@ -108,6 +142,8 @@ class CellInstanceClient:
             order_by=order_by,
             order=order,
         )
+        if batch_id is not None:
+            filter_params["batch_id"] = batch_id
         endpoint = _build_endpoint(
             f"/cell_specifications/{cell_spec_id}/cell_instances",
             {"limit": limit, "offset": offset, **filter_params},
@@ -127,13 +163,24 @@ class CellInstanceClient:
         cell_instance_id : str
             The ID of the cell instance to update.
         data : dict[str, Any]
-            Dictionary containing the fields to update.
+            Dictionary containing the fields to update (partial update). Set
+            ``batch_id`` to move the cell into a lot of its specification, or to
+            None to remove it from its lot.
 
         Returns
         -------
         CellInstance
             The updated cell instance.
+
+        Raises
+        ------
+        ValueError
+            If ``data`` contains the removed ``batch`` field. Nothing is sent.
+        IonworksError
+            With HTTP 400 if ``batch_id`` does not name a batch of this
+            instance's cell specification.
         """
+        _reject_legacy_batch(data)
         endpoint = f"/cell_instances/{cell_instance_id}"
         response_data = self.client.patch(endpoint, data)
         return CellInstance(**response_data)
@@ -231,13 +278,25 @@ class CellInstanceClient:
         cell_spec_id : str
             The ID of the parent cell specification.
         data : dict[str, Any]
-            Dictionary containing the cell instance data.
+            Dictionary containing the cell instance data. ``name`` is required.
+            To file the cell under a manufacturing lot, pass ``batch_id`` — the
+            id of a batch of the same specification (see
+            :class:`~ionworks.cell_batch.CellBatchClient`).
 
         Returns
         -------
         CellInstance
             The newly created cell instance.
+
+        Raises
+        ------
+        ValueError
+            If ``data`` contains the removed ``batch`` field. Nothing is sent.
+        IonworksError
+            With HTTP 400 if ``batch_id`` does not name a batch of
+            ``cell_spec_id``.
         """
+        _reject_legacy_batch(data)
         endpoint = f"/cell_specifications/{cell_spec_id}/cell_instances"
         response_data = self.client.post(endpoint, data)
         return CellInstance(**response_data)
@@ -260,6 +319,11 @@ class CellInstanceClient:
         -------
         CellInstance
             The cell instance (newly created or existing).
+
+        Raises
+        ------
+        ValueError
+            If ``data`` contains the removed ``batch`` field. Nothing is sent.
         """
         try:
             return self.create(cell_spec_id, data)

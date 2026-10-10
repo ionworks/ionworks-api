@@ -631,6 +631,39 @@ class CellInstance(BaseModel):
     id: str
     name: str
     cell_specification_id: str
+    batch_id: str | None = None
+    #: Read-only; set ``batch_id`` to change it.
+    batch_name: str | None = None
+
+
+# --- Cell Batch Models --- #
+
+
+class CellBatch(BaseModel):
+    """A manufacturing lot: one production run of one cell specification.
+
+    Instances join a lot through their ``batch_id``. Lot names are unique per
+    specification, compared case-insensitively.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str
+    cell_specification_id: str
+    project_id: str | None = None
+    organization_id: str | None = None
+    notes: str | None = None
+    #: ISO date (``YYYY-MM-DD``).
+    date_manufactured: str | None = None
+    #: Lot-level properties, e.g. datasheet values. Numeric values use the same
+    #: Quantity format as other properties (``{"value": ..., "unit": ...}``).
+    properties: dict[str, Any] | None = None
+    created_by: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    #: Number of cell instances currently in the lot.
+    instance_count: int = 0
 
 
 # --- Cell Measurement Models --- #
@@ -683,6 +716,16 @@ class CellMeasurement(BaseModel):
     processing_status: str | None = None
     #: Why step processing failed, when ``processing_status`` is ``failed``.
     processing_error: str | None = None
+    #: Free-form labels for organising and filtering measurements, stored
+    #: normalised (trimmed, deduplicated case-insensitively, sorted).
+    tags: list[str] = Field(default_factory=list)
+
+
+class MeasurementTagUsage(BaseModel):
+    """A tag used in a project and how many measurements carry it."""
+
+    tag: str
+    usage_count: int
 
 
 # --- Bundle Models --- #

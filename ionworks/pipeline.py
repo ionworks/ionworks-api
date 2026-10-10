@@ -164,6 +164,32 @@ def _coerce_element_result(
     return _attach_element_fetchers(result, client, job_id, kind)
 
 
+def _with_progress_cost(raw: Any, element: dict[str, Any]) -> Any:
+    """Fill a data fit's missing ``cost`` from its element's ``progress.best_cost``.
+
+    A data fit's result carries ``cost`` only for runs since SimplePipeline was
+    deprecated. For an earlier run, the best cost among its completed starts is the
+    closest stand-in, and the elements listing already carries it. A result that
+    has ``cost``, even ``None``, is returned unchanged.
+
+    Parameters
+    ----------
+    raw : Any
+        The element's raw result dict, or ``None`` when it has none yet.
+    element : dict[str, Any]
+        The element as ``GET /pipelines/{id}/elements`` returns it.
+
+    Returns
+    -------
+    Any
+        ``raw``, or a copy of it with ``cost`` added.
+    """
+    best_cost = (element.get("progress") or {}).get("best_cost")
+    if not isinstance(raw, dict) or "cost" in raw or best_cost is None:
+        return raw
+    return {**raw, "cost": best_cost}
+
+
 def _attach_element_fetchers(
     result: "iws.BaseResults",
     client: Any,
@@ -492,7 +518,7 @@ class PipelineResponse(BaseModel):
             if element.get("name") == name:
                 result = _coerce_element_result(
                     name,
-                    self.element_results.get(name),
+                    _with_progress_cost(self.element_results.get(name), element),
                     self._client,
                     element.get("job_id"),
                     element_type=element.get("element_type"),

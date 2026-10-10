@@ -27,6 +27,7 @@ from .models import (
     CellMeasurementBundleResponse,
     CellMeasurementDetail,
     InitiateUploadResponse,
+    MeasurementTagUsage,
     MeasurementType,
     PaginatedList,
     RawData,
@@ -47,7 +48,7 @@ from .validators import (
 
 
 def _convert_cached_df(value: pl.DataFrame | None) -> DataFrame | None:
-    """Convert a cached polars DataFrame to the active DataFrame backend."""
+    """Convert a polars DataFrame to the active DataFrame backend."""
     if value is None:
         return None
     if get_dataframe_backend() == "pandas":
@@ -62,6 +63,15 @@ def _as_id_list(measurement_ids: str | Iterable[str]) -> list[str]:
     return list(measurement_ids)
 
 
+def _as_tag_list(tags: Iterable[str] | None) -> list[str] | None:
+    """Turn a tag filter into a list, so a bare string is one tag, not letters."""
+    if tags is None:
+        return None
+    if isinstance(tags, str):
+        return [tags]
+    return list(tags) or None
+
+
 def _build_measurement_payload(
     name: str,
     notes: str | None = None,
@@ -69,6 +79,7 @@ def _build_measurement_payload(
     start_time: str | None = None,
     end_time: str | None = None,
     test_setup: dict[str, Any] | None = None,
+    tags: Iterable[str] | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     """Build a measurement metadata dict, omitting None-valued optional fields.
@@ -89,6 +100,8 @@ def _build_measurement_payload(
         is treated as "still on test" (e.g. in the lab equipment view).
     test_setup : dict[str, Any] | None, optional
         Test setup metadata.
+    tags : Iterable[str] | None, optional
+        Free-form labels for the measurement.
     **extra : Any
         Additional fields to include unconditionally.
 
@@ -108,6 +121,8 @@ def _build_measurement_payload(
         payload["end_time"] = end_time
     if test_setup is not None:
         payload["test_setup"] = test_setup
+    if tags is not None:
+        payload["tags"] = _as_tag_list(tags) or []
     return payload
 
 
@@ -187,6 +202,8 @@ class CellMeasurementClient:
         created_before: str | None = None,
         updated_after: str | None = None,
         updated_before: str | None = None,
+        tags_all: Iterable[str] | None = None,
+        tags_any: Iterable[str] | None = None,
         order_by: str | None = None,
         order: str | None = None,
     ) -> PaginatedList[CellMeasurement]:
@@ -224,6 +241,12 @@ class CellMeasurementClient:
             ISO datetime; return measurements updated after this time.
         updated_before : str | None, optional
             ISO datetime; return measurements updated before this time.
+        tags_all : Iterable[str] | None, optional
+            Only measurements carrying every one of these tags. Matched
+            case-insensitively.
+        tags_any : Iterable[str] | None, optional
+            Only measurements carrying at least one of these tags. Matched
+            case-insensitively.
         order_by : str | None, optional
             Column to sort by (``"name"``, ``"created_at"``, ``"updated_at"``,
             ``"start_time"``).
@@ -258,11 +281,173 @@ class CellMeasurementClient:
                 "limit": limit,
                 "offset": offset,
                 "measurement_type": measurement_type,
+                "tags_all": _as_tag_list(tags_all),
+                "tags_any": _as_tag_list(tags_any),
                 **filter_params,
             },
         )
         response_data = self.client.get(endpoint)
         return _parse_list_response(response_data, CellMeasurement)
+
+    def list_by_project(
+        self,
+        project_id: str,
+        limit: int | None = None,
+        offset: int | None = None,
+        measurement_type: str | None = None,
+        *,
+        q: str | None = None,
+        tags_all: Iterable[str] | None = None,
+        tags_any: Iterable[str] | None = None,
+        order_by: str | None = None,
+        order: str | None = None,
+    ) -> PaginatedList[CellMeasurement]:
+        """List every cell measurement in a project, across all its cells.
+
+        The way to find measurements by tag: ``list_by_project(project_id,
+        tags_all=["hppc", "25degC"])``.
+
+        Parameters
+        ----------
+        project_id : str
+            The project to list measurements from.
+        limit : int | None, optional
+            Maximum number of measurements to return per page (server default 25,
+            at most 1000).
+        offset : int | None, optional
+            Number of measurements to skip for pagination.
+        measurement_type : str | None, optional
+            Filter by measurement type (``"time_series"``, ``"file"``,
+            ``"properties"``).
+        q : str | None, optional
+            Free-text search over name, notes, protocol name and tags.
+        tags_all : Iterable[str] | None, optional
+            Only measurements carrying every one of these tags. Matched
+            case-insensitively.
+        tags_any : Iterable[str] | None, optional
+            Only measurements carrying at least one of these tags. Matched
+            case-insensitively.
+        order_by : str | None, optional
+            Column to sort by (``"name"``, ``"created_at"``, ``"updated_at"``,
+            ``"start_time"``).
+        order : str | None, optional
+            Sort direction: ``"asc"`` or ``"desc"``.
+
+        Returns
+        -------
+        PaginatedList[CellMeasurement]
+            The page of measurements.
+        """
+        endpoint = _build_endpoint(
+            "/cell_measurements",
+            {
+                "project_id": project_id,
+                "limit": limit,
+                "offset": offset,
+                "measurement_type": measurement_type,
+                "q": q,
+                "tags_all": _as_tag_list(tags_all),
+                "tags_any": _as_tag_list(tags_any),
+                "order_by": order_by,
+                "order": order,
+            },
+        )
+        response_data = self.client.get(endpoint)
+        return _parse_list_response(response_data, CellMeasurement)
+
+    def list_tags(
+        self, project_id: str, q: str | None = None, limit: int | None = None
+    ) -> PaginatedList[MeasurementTagUsage]:
+        """List the distinct tags used on a project's measurements.
+
+        Parameters
+        ----------
+        project_id : str
+            The project whose tags to list.
+        q : str | None, optional
+            Case-insensitive substring the tag must contain.
+        limit : int | None, optional
+            Maximum number of tags to return (server default 50, at most 1000).
+
+        Returns
+        -------
+        PaginatedList[MeasurementTagUsage]
+            Tags with the number of measurements carrying each, most used first.
+            ``total`` says whether more exist than were returned.
+        """
+        endpoint = _build_endpoint(
+            "/cell_measurements/tags",
+            {"project_id": project_id, "q": q, "limit": limit},
+        )
+        response_data = self.client.get(endpoint)
+        return _parse_list_response(response_data, MeasurementTagUsage)
+
+    def add_tags(
+        self, measurement_ids: str | Iterable[str], tags: Iterable[str]
+    ) -> int:
+        """Add tags to one or more measurements.
+
+        Tags a measurement already has are left alone, so calling this twice is
+        harmless. Each added tag takes the spelling already used in its project.
+
+        Parameters
+        ----------
+        measurement_ids : str | Iterable[str]
+            One measurement id or up to 1000 of them.
+        tags : Iterable[str]
+            Tags to add.
+
+        Returns
+        -------
+        int
+            Number of measurements whose tags changed.
+
+        Raises
+        ------
+        IonworksError
+            ``NOT_FOUND`` (404) if a measurement does not exist or is not
+            visible to you; ``FORBIDDEN`` (403) if you can read but not update
+            one; ``BAD_REQUEST`` (400) if a tag is invalid or a measurement would
+            exceed 50 tags.
+        """
+        return self._bulk_tags(measurement_ids, add=list(tags), remove=[])
+
+    def remove_tags(
+        self, measurement_ids: str | Iterable[str], tags: Iterable[str]
+    ) -> int:
+        """Remove tags from one or more measurements, matched case-insensitively.
+
+        Parameters
+        ----------
+        measurement_ids : str | Iterable[str]
+            One measurement id or up to 1000 of them.
+        tags : Iterable[str]
+            Tags to remove. A tag a measurement does not have is ignored.
+
+        Returns
+        -------
+        int
+            Number of measurements whose tags changed.
+
+        Raises
+        ------
+        IonworksError
+            ``NOT_FOUND`` (404) or ``FORBIDDEN`` (403) as for :meth:`add_tags`.
+        """
+        return self._bulk_tags(measurement_ids, add=[], remove=list(tags))
+
+    def _bulk_tags(
+        self, measurement_ids: str | Iterable[str], add: list[str], remove: list[str]
+    ) -> int:
+        response_data = self.client.post(
+            "/cell_measurements/tags/bulk",
+            {
+                "measurement_ids": _as_id_list(measurement_ids),
+                "add": add,
+                "remove": remove,
+            },
+        )
+        return int(response_data["updated_count"])
 
     def get(self, measurement_id: str) -> CellMeasurement:
         """Get a specific cell measurement by its ID only."""
@@ -576,8 +761,13 @@ class CellMeasurementClient:
 
         return result
 
-    def time_series(self, measurement_id: str, use_cache: bool = True) -> DataFrame:
-        """Download full time series as a parquet file.
+    def time_series(
+        self,
+        measurement_id: str,
+        use_cache: bool = True,
+        row_range: tuple[int, int] | None = None,
+    ) -> DataFrame:
+        """Download time series as a parquet file.
 
         The API endpoint redirects to storage; the HTTP client follows the
         redirect automatically and returns the raw parquet bytes.
@@ -589,20 +779,41 @@ class CellMeasurementClient:
         use_cache : bool, optional
             If True (default), check the local file cache before making an API
             call and store the result for future use.
+        row_range : tuple[int, int], optional
+            Half-open window of absolute row offsets to fetch. Only the row
+            groups holding those rows are transferred, which for a window of a
+            long history is a fraction of the file. Omit for the whole series.
 
         Returns
         -------
         DataFrame
-            Full time series data.
+            The requested rows, or the full time series when ``row_range`` is
+            omitted.
         """
+        endpoint = f"/cell_measurements/{measurement_id}/time_series/download"
 
-        def fetch() -> DataFrame:
-            content = self.client.request_raw(
-                "GET", f"/cell_measurements/{measurement_id}/time_series/download"
+        if row_range is None:
+
+            def fetch_all() -> DataFrame:
+                return parquet_to_dataframe(self.client.request_raw("GET", endpoint))
+
+            return self._cached_fetch(
+                measurement_id, "time_series", fetch_all, use_cache
             )
-            return parquet_to_dataframe(content)
 
-        return self._cached_fetch(measurement_id, "time_series", fetch, use_cache)
+        start, stop = int(row_range[0]), int(row_range[1])
+
+        if use_cache:
+            cached = _load_from_cache(measurement_id)
+            if cached is not None and cached.get("time_series") is not None:
+                return _convert_cached_df(
+                    cached["time_series"].slice(start, stop - start)
+                )
+
+        # Not cached: a window is two range requests, and one file per window
+        # would make every later cache read deserialise them all.
+        frame = pl.scan_parquet(self.client.redirect_url(endpoint))
+        return _convert_cached_df(frame.slice(start, stop - start).collect())
 
     def update(self, measurement_id: str, data: dict[str, Any]) -> CellMeasurement:
         """Update an existing cell measurement.
@@ -616,7 +827,9 @@ class CellMeasurementClient:
             attaching/detaching a ``channel_id`` (pass ``None`` to detach), for
             setting ``end_time`` to mark a run complete, and for attaching a
             ``protocol_id`` once the protocol a run executed is known (it must
-            belong to the measurement's own project).
+            belong to the measurement's own project). Passing ``tags``
+            replaces the measurement's tags; use :meth:`add_tags` /
+            :meth:`remove_tags` to change some without restating the rest.
 
         Returns
         -------
@@ -1025,6 +1238,8 @@ class CellMeasurementClient:
               measurement is a channel-linked run, which requires ``start_time``
               and forbids overlapping another run on the same channel — see the
               Raises note below and the ``manage-equipment`` skill.
+              May also carry ``tags`` (a list of free-form labels, normalised as
+              in :meth:`create_properties`).
             - time_series: pandas DataFrame or dict with time series data
             - steps: optional dict with pre-calculated steps data
         validate_strict : bool, optional
@@ -1353,6 +1568,7 @@ class CellMeasurementClient:
         start_time: str | None = None,
         end_time: str | None = None,
         test_setup: dict[str, Any] | None = None,
+        tags: Iterable[str] | None = None,
     ) -> CellMeasurement:
         """Create a properties-type measurement (no file upload).
 
@@ -1379,6 +1595,11 @@ class CellMeasurementClient:
             while it is still running.
         test_setup : dict[str, Any] | None, optional
             Test setup metadata.
+        tags : Iterable[str] | None, optional
+            Free-form labels, e.g. ``["baseline", "batch-7"]``. Whitespace is
+            trimmed, duplicates are dropped case-insensitively, and a tag already
+            used in the project keeps its existing spelling. At most 50 tags of up
+            to 50 characters each.
 
         Returns
         -------
@@ -1393,6 +1614,7 @@ class CellMeasurementClient:
             start_time=start_time,
             end_time=end_time,
             test_setup=test_setup,
+            tags=tags,
             measurement_type=MeasurementType.properties.value,
             properties=properties,
         )
@@ -1484,6 +1706,7 @@ class CellMeasurementClient:
         start_time: str | None = None,
         end_time: str | None = None,
         test_setup: dict[str, Any] | None = None,
+        tags: Iterable[str] | None = None,
     ) -> CellMeasurementBundleResponse:
         """Create a file-type measurement by uploading files.
 
@@ -1516,6 +1739,11 @@ class CellMeasurementClient:
             while it is still running.
         test_setup : dict[str, Any] | None, optional
             Test setup metadata.
+        tags : Iterable[str] | None, optional
+            Free-form labels, e.g. ``["baseline", "batch-7"]``. Whitespace is
+            trimmed, duplicates are dropped case-insensitively, and a tag already
+            used in the project keeps its existing spelling. At most 50 tags of up
+            to 50 characters each.
 
         Returns
         -------
@@ -1583,6 +1811,7 @@ class CellMeasurementClient:
                 start_time=start_time,
                 end_time=end_time,
                 test_setup=test_setup,
+                tags=tags,
             ),
             measurement_type=MeasurementType.file,
             filenames=filenames,

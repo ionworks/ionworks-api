@@ -9,6 +9,55 @@ see [docs.ionworks.com/changelog](https://docs.ionworks.com/changelog).
 
 <!-- New release sections are prepended below by the release-packages skill. -->
 
+## [0.37.0] - 2026-10-09
+
+### Breaking changes
+- Cell instances no longer have a free-text `batch` field. Manufacturing lots
+  are now their own records, and an instance points at one through `batch_id`.
+  `client.cell_instance.create()`, `create_or_get()` and `update()` raise a
+  `ValueError` naming the replacement if `data` contains `batch`. To migrate,
+  create or look up the lot with
+  `client.cell_batch.create_or_get(cell_spec_id, {"name": ...})` and pass
+  `batch_id=<lot>.id`.
+- Simulation configs are checked for unknown keys. `client.simulation.protocol()`
+  and `protocol_batch()` raise a `ValueError` naming any misspelt or misplaced
+  key, where it was previously ignored and the simulation ran without it.
+
+### Added
+- `client.cell_batch` manages cell batches (manufacturing lots of one cell
+  specification): `list()`, `get()`, `create()`, `create_or_get()`, `update()`
+  and `delete()`. Deleting a batch unlinks its cells and never deletes them. The
+  new model `CellBatch` is exported from `ionworks`.
+- `client.cell_instance.list(..., batch_id=...)` returns only the cells in one
+  batch. Instances carry `batch_id` and a read-only `batch_name`.
+- Measurement tags. `CellMeasurement.tags` holds a measurement's tags;
+  `client.cell_measurement.list_tags(project_id)` lists the tags a project uses
+  with their counts; `add_tags()` and `remove_tags()` change tags on up to 1000
+  measurements at once; and `list()` and the new `list_by_project()` filter by
+  `tags_all` / `tags_any`. The new model `MeasurementTagUsage` is exported from
+  `ionworks`.
+- `client.simulation.protocol()` and `protocol_batch()` accept `protocol_id` to
+  run a saved protocol, in place of `protocol_experiment`. `project_id` then
+  defaults to the protocol's own project.
+- `client.simulation.protocol_batch()` accepts `conditions`, an explicit list of
+  runs each with its own `experiment_parameters` and `design_parameters`, as an
+  alternative to `design_parameters_doe`.
+- `client.simulation.get_statuses(simulation_ids)` returns the status of many
+  simulations in one request.
+- `client.cell_measurement.time_series(..., row_range=(start, stop))` downloads
+  only the rows in that window.
+- `client.simulation.delete(simulation_id)` and
+  `client.parameterized_model.delete(cell_spec_id, parameterized_model_id)`.
+
+### Changed
+- A pipeline data fit's result carries its best cost, so `fit.cost` is set where
+  `SimplePipeline` users previously read `result["cost"]`.
+
+### Deprecated
+- Every `client.simple_pipeline` method emits a `DeprecationWarning` naming its
+  `client.pipeline` equivalent. SimplePipeline will be removed no earlier than
+  November 2026, and past runs cannot be fetched after that.
+
 ## [0.36.0] - 2026-09-30
 
 ### Added

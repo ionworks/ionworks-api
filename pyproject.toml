@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ionworks-api"
-version = "0.36.0"
+version = "0.37.0"
 description = "Python client for interacting with the Ionworks API"
 authors = []
 readme = "README.md"
@@ -34,12 +34,12 @@ dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.0",
     "types-requests>=2.31.0",
-    "boto3>=1.43.98",
+    "boto3>=1.43.103",
     # Needed to test result objects' .plot_* methods.
     "matplotlib>=3.7",
 ]
 docs = ["sphinx>=7.0.0", "furo", "myst-nb>=1.0.0"]
-large-uploads = ["boto3>=1.43.98"]
+large-uploads = ["boto3>=1.43.103"]
 
 [tool.uv.sources]
 ionworks-schema = { workspace = true }

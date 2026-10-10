@@ -240,6 +240,20 @@ class ParameterizedModelClient:
         response_data = self.client.patch(endpoint, normalize_simulation_settings(data))
         return ParameterizedModel(**response_data)
 
+    def delete(self, cell_spec_id: str, parameterized_model_id: str) -> None:
+        """Delete a parameterized model.
+
+        Parameters
+        ----------
+        cell_spec_id : str
+            The ID of the cell specification the model belongs to.
+        parameterized_model_id : str
+            The ID of the parameterized model to delete.
+        """
+        self.client.delete(
+            f"/cells/{cell_spec_id}/parameterized_models/{parameterized_model_id}"
+        )
+
     def get_parameter_values(self, parameterized_model_id: str) -> dict[str, Any]:
         """Get all parameter values from a parameterized model as JSON.
 

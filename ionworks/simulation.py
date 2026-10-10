@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 import time
 from typing import Any, cast
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ._dataframe import parquet_to_dataframe
 from ._project_id import resolve_project_id
@@ -101,14 +101,24 @@ def _normalize_parameterized_model(parameterized_model: Any) -> Any:
     return parameterized_model
 
 
-class ProtocolExperimentConfig(BaseModel):
+class _StrictModel(BaseModel):
+    """Base for request configs: a misspelt or misplaced key raises.
+
+    Otherwise it would be dropped silently, running a simulation without the
+    setting the caller asked for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProtocolExperimentConfig(_StrictModel):
     """Protocol experiment configuration."""
 
     protocol: str = Field(description="YAML protocol string (UCP format)")
     name: str = Field(description="Protocol name for template naming")
 
 
-class DOERow(BaseModel):
+class DOERow(_StrictModel):
     """Design of experiments row configuration."""
 
     type: str = Field(description="Type: 'range', 'discrete', or 'normal'")
@@ -126,7 +136,7 @@ class DOERow(BaseModel):
     std: float | None = Field(default=None, description="Standard deviation")
 
 
-class DesignParametersDOE(BaseModel):
+class DesignParametersDOE(_StrictModel):
     """Design of experiments configuration."""
 
     sampling: str = Field(
@@ -138,7 +148,24 @@ class DesignParametersDOE(BaseModel):
     )
 
 
-class ProtocolSimulationBatchRequest(BaseModel):
+class SimulationCondition(_StrictModel):
+    """The inputs of one simulation in an explicit list of runs."""
+
+    experiment_parameters: dict[str, float | str] = Field(
+        default_factory=dict,
+        description=(
+            "Values for the protocol's inputs in this run, e.g. "
+            "{'Temperature [°C]': 25}. Override the request's shared "
+            "experiment_parameters."
+        ),
+    )
+    design_parameters: dict[str, float | str] = Field(
+        default_factory=dict,
+        description="Model-parameter overrides for this run.",
+    )
+
+
+class ProtocolSimulationBatchRequest(_StrictModel):
     """Request model for batch protocol-based simulation."""
 
     parameterized_model: Any = Field(
@@ -149,16 +176,38 @@ class ProtocolSimulationBatchRequest(BaseModel):
             "parameterized-model ID string."
         )
     )
-    protocol_experiment: ProtocolExperimentConfig = Field(
-        description="Protocol experiment configuration"
+    protocol_experiment: ProtocolExperimentConfig | None = Field(
+        default=None,
+        description=(
+            "Protocol experiment configuration (UCP YAML plus a name). Provide "
+            "exactly one of this or ``protocol_id``."
+        ),
+    )
+    protocol_id: str | None = Field(
+        default=None,
+        description=(
+            "Id of a saved protocol to run. Provide exactly one of this or "
+            "``protocol_experiment``."
+        ),
     )
     design_parameters_doe: DesignParametersDOE | None = Field(
         default=None,
         description="Design of experiments configuration. Omit for a single simulation.",
     )
+    conditions: list[SimulationCondition] | None = Field(
+        default=None,
+        description=(
+            "Explicit list of runs, one simulation per entry, each with its own "
+            "experiment and design parameters. Use in place of "
+            "``design_parameters_doe`` when the runs are not a sampled design."
+        ),
+    )
     experiment_parameters: dict[str, float] | None = Field(
         default=None,
-        description=("Experiment parameters for any inputs in the protocol."),
+        description=(
+            "Experiment parameters for any inputs in the protocol. With "
+            "``conditions``, a shared default each condition can override."
+        ),
     )
     max_backward_jumps: int | None = Field(
         default=None,
@@ -171,10 +220,12 @@ class ProtocolSimulationBatchRequest(BaseModel):
     project_id: str | None = Field(
         default=None,
         description=(
-            "Project the protocol belongs to. Required by the backend: the "
-            "parsed protocol is created as a project-scoped experiment "
-            "template. Falls back to the project_id configured on the Ionworks "
-            "client (or IONWORKS_PROJECT_ID) when omitted."
+            "Project the protocol belongs to. Required by the backend for "
+            "``protocol_experiment``: the parsed protocol is created as a "
+            "project-scoped experiment template. Falls back to the project_id "
+            "configured on the Ionworks client (or IONWORKS_PROJECT_ID) when "
+            "omitted. With ``protocol_id`` it is optional, and the saved "
+            "protocol's own project is used when it is omitted."
         ),
     )
     extra_variables: list[str] | None = Field(
@@ -187,6 +238,26 @@ class ProtocolSimulationBatchRequest(BaseModel):
             "defined in the experiment template."
         ),
     )
+
+    @model_validator(mode="after")
+    def _exactly_one_protocol_source(self) -> ProtocolSimulationBatchRequest:
+        if (self.protocol_experiment is None) == (self.protocol_id is None):
+            raise ValueError(
+                "Provide exactly one of 'protocol_experiment' (UCP YAML) or "
+                "'protocol_id' (a saved protocol)."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _at_most_one_run_list(self) -> ProtocolSimulationBatchRequest:
+        if self.conditions is not None and self.design_parameters_doe is not None:
+            raise ValueError(
+                "Provide either 'conditions' (an explicit list of runs) or "
+                "'design_parameters_doe' (a sampled design), not both."
+            )
+        if self.conditions is not None and not self.conditions:
+            raise ValueError("'conditions' must contain at least one run.")
+        return self
 
 
 class SimulationResponse(BaseModel):
@@ -214,7 +285,7 @@ def _design_parameters_to_single_row_doe(
     )
 
 
-def _expected_doe_simulation_count(doe: DesignParametersDOE) -> int:
+def expected_doe_simulation_count(doe: DesignParametersDOE) -> int:
     """Return the number of simulations a DOE will produce.
 
     For ``grid`` sampling, this is the product of the per-row sample counts
@@ -237,6 +308,51 @@ def _expected_doe_simulation_count(doe: DesignParametersDOE) -> int:
                 )
         return total
     return doe.count or 1
+
+
+#: The most ids ``POST /simulations/statuses`` returns per request.
+_STATUSES_PAGE_SIZE = 1000
+
+
+def _describe_config_errors(error: ValidationError, prefix: tuple = ()) -> str:
+    """Turn a config ``ValidationError`` into one readable line per problem.
+
+    Pydantic's own rendering echoes the whole input back, which buries the
+    problem and can be long for an inline protocol. ``prefix`` is the config
+    key the validated value sat under, when it was validated on its own.
+    """
+    problems = []
+    unknown_top_level_key = False
+    for item in error.errors():
+        loc = (*prefix, *item["loc"])
+        location = ".".join(str(part) for part in loc)
+        if item["type"] == "extra_forbidden":
+            problems.append(f"Unknown config key '{location}'.")
+            unknown_top_level_key |= len(loc) == 1
+        else:
+            message = item["msg"].removeprefix("Value error, ")
+            problems.append(f"{location}: {message}" if location else message)
+    if unknown_top_level_key:
+        valid = ", ".join(sorted(ProtocolSimulationBatchRequest.model_fields))
+        problems.append(f"Valid top-level keys: {valid}.")
+    return "Invalid simulation config: " + " ".join(problems)
+
+
+def _parse_parameters(
+    experiment_parameters: dict[str, Any],
+    conditions: list[SimulationCondition] | None,
+) -> dict[str, Any]:
+    """Experiment parameters to parse an inline protocol into a template with.
+
+    Parsing only adds the initial temperature/SOC ``input[...]`` references for
+    keys it is given, so a key set only inside conditions must reach it too, or
+    those runs silently start from the protocol's own initial state.
+    """
+    merged: dict[str, Any] = {}
+    for condition in conditions or []:
+        for name, value in condition.experiment_parameters.items():
+            merged.setdefault(name, value)
+    return {**merged, **experiment_parameters}
 
 
 class SimulationClient:
@@ -274,6 +390,8 @@ class SimulationClient:
                 - a parameterized-model ID string.
             - protocol_experiment: ProtocolExperimentConfig dict with
               protocol and name fields
+            - protocol_id: id of a saved protocol, in place of
+              ``protocol_experiment`` (provide exactly one)
             - experiment_parameters: Optional dict with initial_soc and
               initial_temperature
             - design_parameters: Optional ``dict[str, float]`` — design
@@ -298,6 +416,12 @@ class SimulationClient:
             for multi-simulation DOE).
         """
         config = dict(config)
+        if "conditions" in config:
+            raise ValueError(
+                "protocol() runs one simulation and does not take 'conditions'. "
+                "Set its inputs with 'experiment_parameters' and "
+                "'design_parameters', or use protocol_batch() for a list of runs."
+            )
         design_parameters = config.pop("design_parameters", None)
         existing_doe = config.get("design_parameters_doe")
         if design_parameters is not None:
@@ -312,12 +436,17 @@ class SimulationClient:
                 else None
             )
         elif existing_doe is not None:
-            doe = DesignParametersDOE.model_validate(existing_doe)
+            try:
+                doe = DesignParametersDOE.model_validate(existing_doe)
+            except ValidationError as e:
+                raise ValueError(
+                    _describe_config_errors(e, prefix=("design_parameters_doe",))
+                ) from None
         else:
             doe = None
 
         if doe is not None:
-            expected = _expected_doe_simulation_count(doe)
+            expected = expected_doe_simulation_count(doe)
             if expected != 1:
                 raise ValueError(
                     f"protocol() is single-simulation, but the supplied DOE "
@@ -334,7 +463,8 @@ class SimulationClient:
 
         Uses a two-step flow: first parses the protocol and creates an experiment
         template (``POST /protocols/parse-to-template``), then runs the batch
-        (``POST /simulations/with-template/batch``).
+        (``POST /simulations/with-template/batch``). A saved ``protocol_id`` is
+        already a template, so it skips the parse step.
 
         Parameters
         ----------
@@ -349,7 +479,13 @@ class SimulationClient:
                 - a parameterized-model ID string.
             - protocol_experiment: ProtocolExperimentConfig dict with
               protocol and name fields
+            - protocol_id: id of a saved protocol, in place of
+              ``protocol_experiment`` (provide exactly one)
             - design_parameters_doe: DesignParametersDOE dict
+            - conditions: Optional list of ``{"experiment_parameters": {...},
+              "design_parameters": {...}}`` dicts — one simulation per entry,
+              in place of ``design_parameters_doe``. Top-level
+              ``experiment_parameters`` fill in whatever a condition omits.
             - experiment_parameters: Optional dict
             - max_backward_jumps: Optional int
             - study_id: Optional str
@@ -366,28 +502,42 @@ class SimulationClient:
         ValueError
             If the configuration is invalid.
         """
+        if "design_parameters" in config:
+            raise ValueError(
+                "protocol_batch() does not take 'design_parameters', which sets one "
+                "run's inputs in protocol(). Give each run its own with "
+                "'conditions', or sweep them with 'design_parameters_doe'."
+            )
         try:
             validated_config = ProtocolSimulationBatchRequest(**config)
         except ValidationError as e:
-            raise ValueError(
-                f"Invalid batch protocol simulation configuration: {e}"
-            ) from e
+            raise ValueError(_describe_config_errors(e)) from None
 
         experiment_parameters = validated_config.experiment_parameters or {}
 
-        # Step 1: parse protocol and resolve/create the experiment template.
-        # The backend requires project_id here — the parsed protocol becomes a
-        # project-scoped experiment template. Fall back to the client default.
-        project_id = resolve_project_id(self.client, validated_config.project_id)
-        parse_response = self.client.post(
-            "/protocols/parse-to-template",
-            json_payload={
-                "protocol_experiment": validated_config.protocol_experiment.model_dump(),
-                "experiment_parameters": experiment_parameters,
-                "project_id": project_id,
-            },
-        )
-        template_id: str = parse_response["template_id"]
+        if validated_config.protocol_id is not None:
+            # No client-default fallback: the backend uses the template's own
+            # project, which the client default need not match.
+            template_id: str = validated_config.protocol_id
+            project_id = validated_config.project_id
+        else:
+            # The parsed protocol becomes a project-scoped template, so the
+            # backend requires a project here.
+            protocol_experiment = cast(
+                ProtocolExperimentConfig, validated_config.protocol_experiment
+            )
+            project_id = resolve_project_id(self.client, validated_config.project_id)
+            parse_response = self.client.post(
+                "/protocols/parse-to-template",
+                json_payload={
+                    "protocol_experiment": protocol_experiment.model_dump(),
+                    "experiment_parameters": _parse_parameters(
+                        experiment_parameters, validated_config.conditions
+                    ),
+                    "project_id": project_id,
+                },
+            )
+            template_id = parse_response["template_id"]
 
         # Step 2: run the batch against the resolved template
         batch_payload: dict[str, Any] = {
@@ -396,6 +546,18 @@ class SimulationClient:
             ),
             "experiment_template_id": template_id,
             "experiment_parameter_sets": [experiment_parameters],
+            "conditions": [
+                {
+                    "experiment_parameters": {
+                        **experiment_parameters,
+                        **condition.experiment_parameters,
+                    },
+                    "design_parameters": condition.design_parameters,
+                }
+                for condition in validated_config.conditions
+            ]
+            if validated_config.conditions
+            else None,
             "design_parameters_doe": validated_config.design_parameters_doe.model_dump(
                 exclude_none=True
             )
@@ -482,6 +644,49 @@ class SimulationClient:
         endpoint = f"/simulations/{simulation_id}"
         response_data = self.client.get(endpoint)
         return cast(dict[str, Any], response_data)
+
+    def delete(self, simulation_id: str) -> None:
+        """Delete a simulation and its stored result data.
+
+        Parameters
+        ----------
+        simulation_id : str
+            The UUID of the simulation to delete.
+        """
+        self.client.delete(f"/simulations/{simulation_id}")
+
+    def get_statuses(self, simulation_ids: list[str]) -> list[dict[str, Any]]:
+        """Get the job status of many simulations in one lightweight request.
+
+        Much cheaper than calling :meth:`get` per simulation when polling a
+        batch: only the status of each simulation's job is returned, not the
+        joined simulation record.
+
+        Parameters
+        ----------
+        simulation_ids : list[str]
+            Ids of the simulations to check.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            One ``{"simulation_id", "status", "error", "error_code",
+            "updated_at"}`` item per simulation that exists, is visible to the
+            caller, and has a job. Ids that match none are omitted, so compare
+            against the ids you asked for. ``status`` is the job status
+            (``pending``, ``waiting``, ``processing``, ``completed``,
+            ``failed`` or ``canceled``).
+        """
+        statuses: list[dict[str, Any]] = []
+        for start in range(0, len(simulation_ids), _STATUSES_PAGE_SIZE):
+            chunk = simulation_ids[start : start + _STATUSES_PAGE_SIZE]
+            statuses.extend(
+                self.client.post(
+                    "/simulations/statuses",
+                    json_payload={"simulation_ids": chunk, "limit": len(chunk)},
+                )
+            )
+        return statuses
 
     def get_result(self, simulation_id: str) -> SimulationResult:
         """Get simulation data/result for a completed simulation.

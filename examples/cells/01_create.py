@@ -130,13 +130,23 @@ v_min = cell_spec.ratings["voltage_min"]
 v_max = cell_spec.ratings["voltage_max"]
 print(f"  Voltage range: {v_min['value']}-{v_max['value']} V")
 
-# Step 2: Create a cell instance with measured properties
+# A lot belongs to one cell specification; its name is unique within that spec.
+batch = client.cell_batch.create_or_get(
+    cell_spec.id,
+    {
+        "name": "BATCH-2024-001",
+        "date_manufactured": "2024-01-20",
+        "notes": "First pilot-line run",
+    },
+)
+print(f"\nBatch: {batch.name} (id: {batch.id})")
+
 # measured_properties uses the same Quantity format, organized by component
 cell_instance = client.cell_instance.create_or_get(
     cell_spec.id,
     {
         "name": "NCM622-GR-001",
-        "batch": "BATCH-2024-001",
+        "batch_id": batch.id,
         "date_manufactured": "2024-01-20",
         # Measured properties per component (as-built values)
         "measured_properties": {
@@ -158,10 +168,9 @@ cell_instance = client.cell_instance.create_or_get(
 )
 
 print(f"\nCreated cell instance: {cell_instance.name} (id: {cell_instance.id})")
-print(f"  Batch: {cell_instance.batch}")
+print(f"  Batch: {cell_instance.batch_name}")
 print(f"  Date manufactured: {cell_instance.date_manufactured}")
 
-# Step 3: Upload measurement with time series data
 # Note: positive current = discharge (voltage decreases), negative current = charge
 time_series = pd.DataFrame(
     {

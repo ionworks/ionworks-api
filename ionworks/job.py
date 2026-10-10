@@ -71,10 +71,9 @@ class JobClient:
         .. deprecated::
             The server no longer accepts direct job submissions, so every call
             fails with a 410 error. Start work through the dedicated clients
-            instead: ``client.pipeline`` / ``client.simple_pipeline`` for fits
-            and validations, ``client.simulation`` for simulations, and
-            ``client.ecm`` for ECM fits. ``get``, ``list`` and ``cancel`` are
-            unaffected.
+            instead: ``client.pipeline`` for fits and validations,
+            ``client.simulation`` for simulations, and ``client.ecm`` for ECM
+            fits. ``get``, ``list`` and ``cancel`` are unaffected.
 
         Parameters
         ----------
@@ -95,8 +94,8 @@ class JobClient:
         """
         warnings.warn(
             "JobClient.create is deprecated: the server rejects direct job "
-            "submissions. Use the pipeline, simple_pipeline, simulation or ecm "
-            "clients to start work.",
+            "submissions. Use the pipeline, simulation or ecm clients to start "
+            "work.",
             DeprecationWarning,
             stacklevel=2,
         )

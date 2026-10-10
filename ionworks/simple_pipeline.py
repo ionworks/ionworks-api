@@ -5,12 +5,20 @@ This module provides the :class:`SimplePipelineClient` for creating and managing
 SimplePipelines — a lightweight pipeline endpoint restricted to at most one
 datafit or validation element. Unlike the full pipeline API, configs are
 submitted as a single payload and executed end-to-end as one job.
+
+.. deprecated::
+    SimplePipeline is deprecated and will be removed in a future release. Use
+    ``client.pipeline`` with an ``iws.Pipeline`` instead: it runs the same
+    elements, has methods of the same names, and its runs appear in the web app.
+    Results are read differently; see
+    https://docs.ionworks.com/build/parameterize/api#migrating-to-pipeline.
 """
 
 from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING, Any
+import warnings
 
 from pydantic import BaseModel, PrivateAttr, ValidationError
 
@@ -21,6 +29,29 @@ from .validators import run_validators_outbound
 
 if TYPE_CHECKING:
     import ionworks_schema as iws
+
+
+#: Where every deprecation warning in this module sends the caller.
+MIGRATION_GUIDE_URL = (
+    "https://docs.ionworks.com/build/parameterize/api#migrating-to-pipeline"
+)
+
+
+def _warn_deprecated(method: str) -> None:
+    """Warn that ``client.simple_pipeline.<method>`` is deprecated.
+
+    ``stacklevel=3`` attributes the warning to the caller of the public method,
+    so it is shown for user scripts and notebooks under the default filters.
+    """
+    warnings.warn(
+        f"client.simple_pipeline.{method}() is deprecated and will be removed in "
+        f"a future release. Use client.pipeline.{method}() instead, passing an "
+        "iws.Pipeline rather than an iws.SimplePipeline; its runs appear in the "
+        "Ionworks web app. Results are read differently and a few arguments are "
+        f"keyword-only, so see the migration guide: {MIGRATION_GUIDE_URL}",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 def _coerce_simple_pipeline_to_dict(
@@ -123,10 +154,15 @@ class SimplePipelineSubmissionResponse(BaseModel):
 class SimplePipelineClient:
     """Client for creating and managing SimplePipeline runs.
 
+    .. deprecated::
+        Every method emits a :class:`DeprecationWarning`, and the client will be
+        removed in a future release. Use ``client.pipeline``, which has methods
+        of the same names. The migration guide lists what differs:
+        https://docs.ionworks.com/build/parameterize/api#migrating-to-pipeline
+
     SimplePipeline is headless: a run is not shown in the web app and no
     model is saved from it. Fitted parameters are returned to the caller
-    through :meth:`get` / :meth:`wait_for_completion`. Use
-    ``client.pipeline`` instead when the run should be visible there.
+    through :meth:`get` / :meth:`wait_for_completion`.
     """
 
     def __init__(self, client: Any) -> None:
@@ -156,6 +192,9 @@ class SimplePipelineClient:
     ) -> SimplePipelineSubmissionResponse:
         """Create and submit a SimplePipeline for execution.
 
+        .. deprecated::
+            Use ``client.pipeline.create()`` instead.
+
         Parameters
         ----------
         config : iws.SimplePipeline | dict[str, Any]
@@ -183,6 +222,7 @@ class SimplePipelineClient:
         ValueError
             If ``project_id`` is not provided and not set on the client.
         """
+        _warn_deprecated("create")
         config_copy = dict(_coerce_simple_pipeline_to_dict(config))
         project_id = (
             project_id
@@ -225,6 +265,9 @@ class SimplePipelineClient:
     ) -> SimplePipelineSubmissionResponse:
         """Partially update a SimplePipeline's name and/or description.
 
+        .. deprecated::
+            Use ``client.pipeline.update()`` instead.
+
         Parameters
         ----------
         simple_pipeline_id : str
@@ -244,6 +287,7 @@ class SimplePipelineClient:
         ValueError
             If neither ``name`` nor ``description`` is provided.
         """
+        _warn_deprecated("update")
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
@@ -262,6 +306,9 @@ class SimplePipelineClient:
     def get(self, simple_pipeline_id: str) -> SimplePipelineSubmissionResponse:
         """Fetch a SimplePipeline by ID.
 
+        .. deprecated::
+            Use ``client.pipeline.get()`` instead.
+
         Parameters
         ----------
         simple_pipeline_id : str
@@ -272,6 +319,11 @@ class SimplePipelineClient:
         SimplePipelineSubmissionResponse
             The current record, including ``status`` and (if completed) ``result``.
         """
+        _warn_deprecated("get")
+        return self._get(simple_pipeline_id)
+
+    def _get(self, simple_pipeline_id: str) -> SimplePipelineSubmissionResponse:
+        """Fetch a SimplePipeline without warning, for internal polling."""
         response_data = self.client.get(f"/simple_pipelines/{simple_pipeline_id}")
         return self._build_response(response_data)
 
@@ -294,6 +346,9 @@ class SimplePipelineClient:
         order: str = "desc",
     ) -> PaginatedList[SimplePipelineSubmissionResponse]:
         """List SimplePipelines for a project.
+
+        .. deprecated::
+            Use ``client.pipeline.list()`` instead.
 
         Parameters
         ----------
@@ -332,6 +387,7 @@ class SimplePipelineClient:
         ValueError
             If ``project_id`` is not provided and not set on the client.
         """
+        _warn_deprecated("list")
         resolved_project_id = resolve_project_id(self.client, project_id)
 
         endpoint = _build_endpoint(
@@ -365,6 +421,9 @@ class SimplePipelineClient:
     def cancel(self, simple_pipeline_id: str) -> SimplePipelineSubmissionResponse:
         """Cancel a running SimplePipeline.
 
+        .. deprecated::
+            Use ``client.pipeline.cancel()`` instead.
+
         Parameters
         ----------
         simple_pipeline_id : str
@@ -376,6 +435,7 @@ class SimplePipelineClient:
             The updated record (status will be ``canceled`` if cancellation
             took effect; otherwise the current state is returned).
         """
+        _warn_deprecated("cancel")
         response_data = self.client.post(
             f"/simple_pipelines/{simple_pipeline_id}/cancel", {}
         )
@@ -384,11 +444,15 @@ class SimplePipelineClient:
     def delete(self, simple_pipeline_id: str) -> None:
         """Delete a SimplePipeline and its associated job.
 
+        .. deprecated::
+            Use ``client.pipeline.delete()`` instead.
+
         Parameters
         ----------
         simple_pipeline_id : str
             The SimplePipeline ID to delete.
         """
+        _warn_deprecated("delete")
         self.client.delete(f"/simple_pipelines/{simple_pipeline_id}")
 
     def wait_for_completion(
@@ -400,6 +464,9 @@ class SimplePipelineClient:
         raise_on_failure: bool = True,
     ) -> SimplePipelineSubmissionResponse:
         """Poll a SimplePipeline until it reaches a terminal state or times out.
+
+        .. deprecated::
+            Use ``client.pipeline.wait_for_completion()`` instead.
 
         Parameters
         ----------
@@ -428,8 +495,9 @@ class SimplePipelineClient:
             If the pipeline failed or was canceled and ``raise_on_failure``
             is True.
         """
+        _warn_deprecated("wait_for_completion")
         deadline = time.time() + timeout
-        pipeline = self.get(simple_pipeline_id)
+        pipeline = self._get(simple_pipeline_id)
 
         if verbose:
             print(f"Polling simple_pipeline {simple_pipeline_id} for completion...")
@@ -441,7 +509,7 @@ class SimplePipelineClient:
                     f"{timeout} seconds (status: {pipeline.status})"
                 )
             time.sleep(poll_interval)
-            pipeline = self.get(simple_pipeline_id)
+            pipeline = self._get(simple_pipeline_id)
             if verbose:
                 elapsed = int(timeout - (deadline - time.time()))
                 print(f"  Status: {pipeline.status} (elapsed: {elapsed}s)")

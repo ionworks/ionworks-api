@@ -101,7 +101,7 @@ instances = client.cell_instance.list(cell_spec_id)
 print(f"  Number of instances: {len(instances)}")
 all_measurements = []
 for inst in instances:
-    print(f"    - Instance: {inst.name} (batch: {inst.batch})")
+    print(f"    - Instance: {inst.name} (batch: {inst.batch_name})")
     # Foreign key navigates to parent spec
     print(f"      cell_specification_id: {inst.cell_specification_id}")
     inst_measurements = client.cell_measurement.list(inst.id)
@@ -118,7 +118,7 @@ cell_instance_id = instances[0].id
 print("4. Get cell instance by ID:")
 instance = client.cell_instance.get(cell_instance_id)
 print(f"  Name: {instance.name}")
-print(f"  Batch: {instance.batch}")
+print(f"  Batch: {instance.batch_name}")
 print(f"  Date manufactured: {instance.date_manufactured}")
 
 # Access measured properties

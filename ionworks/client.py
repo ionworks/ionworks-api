@@ -11,6 +11,7 @@ import json as json_mod
 import logging
 import os
 from typing import Any, cast
+from urllib.parse import urljoin
 
 import pandas as pd
 import requests
@@ -20,6 +21,7 @@ from urllib3.util.retry import Retry
 
 from ._project_id import resolve_env_project_id
 from .analysis import AnalysisClient
+from .cell_batch import CellBatchClient
 from .cell_instance import CellInstanceClient
 from .cell_measurement import CellMeasurementClient
 from .cell_specification import CellSpecificationClient
@@ -288,6 +290,7 @@ class Ionworks:
         self.pipeline = PipelineClient(self)
         self.simple_pipeline = SimplePipelineClient(self)
         self.cell_spec = CellSpecificationClient(self)
+        self.cell_batch = CellBatchClient(self)
         self.cell_instance = CellInstanceClient(self)
         self.cell_measurement = CellMeasurementClient(self)
         self.site = SiteClient(self)
@@ -427,6 +430,47 @@ class Ionworks:
             self._raise_for_http_error(e, url)
         except requests.exceptions.RequestException as e:
             self._raise_for_request_error(e, url)
+
+    def redirect_url(self, endpoint: str) -> str:
+        """Resolve a redirect-to-storage endpoint to the URL it points at.
+
+        :meth:`request_raw` follows the redirect and hands back the whole body.
+        A caller that wants to read part of the file needs the storage URL
+        itself, to issue range requests against.
+
+        Parameters
+        ----------
+        endpoint : str
+            API endpoint path that answers with a redirect.
+
+        Returns
+        -------
+        str
+            Absolute URL of the storage object.
+
+        Raises
+        ------
+        IonworksError
+            If the endpoint answers with something other than a redirect.
+        """
+        url = f"{self.api_url}{endpoint}"
+        try:
+            response = self.session.request(
+                "GET", url, timeout=(10, 60), allow_redirects=False
+            )
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            self._raise_for_http_error(e, url)
+        except requests.exceptions.RequestException as e:
+            self._raise_for_request_error(e, url)
+
+        location = response.headers.get("Location")
+        if not location:
+            raise IonworksError(
+                f"Expected {url} to redirect to storage, got "
+                f"{response.status_code} with no Location header."
+            )
+        return urljoin(url, location)
 
     def get(self, endpoint: str) -> Any:
         """Make a GET request using the request helper."""
