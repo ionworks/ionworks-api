@@ -9,6 +9,17 @@ see [docs.ionworks.com/changelog](https://docs.ionworks.com/changelog).
 
 <!-- New release sections are prepended below by the release-packages skill. -->
 
+## [0.37.1] - 2026-10-20
+
+### Changed
+- `client.pipeline.create` refuses a pipeline whose `DirectEntry` reads a
+  pipeline (`pipeline_id`) or cell specification (`cell_spec_id`) from another
+  project, with a 403 naming the element. Previously such a reference was
+  accepted. Create the pipeline in the source's project, or enter the values
+  directly.
+- Requires `pandas>=2.2.2` and `pyarrow>=16.0.0`. Earlier releases do not import
+  alongside numpy 2.
+
 ## [0.37.0] - 2026-10-09
 
 ### Breaking changes
