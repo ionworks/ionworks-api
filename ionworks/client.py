@@ -35,6 +35,7 @@ from .job import JobClient
 from .lab import LabClient
 from .material import MaterialClient
 from .material_property_dataset import MaterialPropertyDatasetClient
+from .model_builder import ModelBuilderClient
 from .models import CellMeasurement
 from .optimization import OptimizationClient
 from .organization import OrganizationClient
@@ -302,6 +303,7 @@ class Ionworks:
         self.project = ProjectClient(self)
         self.model = ModelClient(self)
         self.parameterized_model = ParameterizedModelClient(self)
+        self.model_builder = ModelBuilderClient(self)
         self.study = StudyClient(self)
         self.optimization = OptimizationClient(self)
         self.organization = OrganizationClient(self)

@@ -1035,6 +1035,10 @@ class Model(BaseModel):
 
     id: str
     name: str
+    #: Project the model belongs to; ``None`` only for system templates.
+    project_id: str | None = None
+    #: The system model a project's copy came from; ``None`` for its own models.
+    source_model_id: str | None = None
     #: Model config (e.g. ``{"type": "SPMe"}``). The ``get`` response includes
     #: it; the ``create`` response may omit it, in which case this is ``None``.
     config: dict[str, Any] | None = None

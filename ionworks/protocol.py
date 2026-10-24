@@ -619,9 +619,9 @@ class ProtocolClient:
         filename_stem : str, optional
             Stem for the returned primary filename. Defaults to ``protocol``.
         nominal_capacity_ah : float, optional
-            Rated cell capacity in amp-hours. Required for ``neware`` when the
-            protocol uses C-rate steps or cutoffs: Neware sets current in
-            absolute mA and has no C-rate mode, so the rate cannot be resolved
+            Rated cell capacity in amp-hours. Required for ``neware`` and
+            ``biologic_bttest`` when the protocol uses C-rate steps or cutoffs:
+            both export them as absolute currents, so the rate cannot be resolved
             without it. Other targets express C-rate natively and ignore it.
         verify : bool, optional
             Ask the server to round-trip the emitted file back through its

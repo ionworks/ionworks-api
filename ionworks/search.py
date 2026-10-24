@@ -72,9 +72,11 @@ class SearchClient:
             ``optimization_template``, ``material``, ``study``,
             ``optimization``, ``pipeline``.
         project_id : str | None, optional
-            When set, scope project-scoped entities (``study``,
-            ``optimization``, ``pipeline``) to this project. Org-scoped
-            entities are unaffected. Unlike most sub-clients, this does NOT
+            When set, restrict every entity that belongs to a project (cell
+            data, parameterized models, protocols, studies, pipelines, ...) to
+            this one, keeping rows with no project such as system templates.
+            ``project``, ``model`` and ``material`` have no project and are
+            unaffected. Unlike most sub-clients, this does NOT
             default to the client's ``project_id`` — global search spans the
             whole organization by default.
 

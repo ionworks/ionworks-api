@@ -11,6 +11,7 @@ from typing import Any
 
 from ionworks.errors import IonworksError
 
+from ._parameters import normalize_parameters
 from ._project_id import resolve_project_id
 from ._simulation_settings import normalize_simulation_settings
 from .models import (
@@ -19,6 +20,13 @@ from .models import (
     _build_endpoint,
     _parse_list_response,
 )
+
+
+def _item_endpoint(cell_spec_id: str | None, parameterized_model_id: str) -> str:
+    """Return the URL of one parameterized model, under its cell spec if it has one."""
+    if cell_spec_id is None:
+        return f"/parameterized_models/{parameterized_model_id}"
+    return f"/cells/{cell_spec_id}/parameterized_models/{parameterized_model_id}"
 
 
 class ParameterizedModelClient:
@@ -94,6 +102,7 @@ class ParameterizedModelClient:
         offset: int | None = None,
         *,
         cell_spec_id: str | None = None,
+        summary: bool = False,
     ) -> PaginatedList[ParameterizedModel]:
         """List parameterized models across all cell specs in a project.
 
@@ -113,6 +122,11 @@ class ParameterizedModelClient:
         cell_spec_id : str | None, optional
             If provided, restrict results to a single cell specification within
             the project. Defaults to None (all cell specs in the project).
+        summary : bool, optional
+            Return each model's id, name, description, ``cell_spec_id``,
+            ``model_id``, ``model_name`` and timestamps only, without its
+            parameter values, which can be very large. Read one model's values
+            with :meth:`get_parameter_values`. Defaults to False.
 
         Returns
         -------
@@ -127,23 +141,33 @@ class ParameterizedModelClient:
                 "cell_spec_id": cell_spec_id,
                 "limit": limit,
                 "offset": offset,
+                "summary": "true" if summary else None,
             },
         )
         response_data = self.client.get(endpoint)
         return _parse_list_response(response_data, ParameterizedModel)
 
-    def create(self, cell_spec_id: str, data: dict[str, Any]) -> ParameterizedModel:
-        """Create a new parameterized model for a cell specification.
+    def create(
+        self, cell_spec_id: str | None, data: dict[str, Any]
+    ) -> ParameterizedModel:
+        """Create a new parameterized model for a cell specification or a project.
 
         Parameters
         ----------
-        cell_spec_id : str
+        cell_spec_id : str | None
             The ID of the cell specification to create the parameterized model
-            for.
+            for, whose capacity and voltage cut-offs override the parameter set's.
+            ``None`` creates a model with no cell specification in the project
+            ``data["project_id"]`` (defaulting to the client's project), which keeps
+            the parameter set's own values.
         data : dict[str, Any]
             Dictionary containing the parameterized model data. Required
             fields: ``name``, ``model_id``. Optional fields: ``description``,
-            ``parameters``, ``simulation_settings``.
+            ``parameters``, ``simulation_settings``, ``project_id``.
+
+            ``parameters`` may be a parameters dict, a ``pybamm.ParameterValues``,
+            or the name of a pybamm parameter set (e.g. ``"Chen2020"``); the
+            latter two are serialized for you.
 
             ``simulation_settings`` is a persistent bag of pybamm simulation
             kwargs (``var_pts`` / ``submesh_types`` / ``spatial_methods`` /
@@ -156,9 +180,25 @@ class ParameterizedModelClient:
         -------
         ParameterizedModel
             The newly created parameterized model object.
+
+        Raises
+        ------
+        ValueError
+            If ``cell_spec_id`` is ``None`` and no ``project_id`` is given or set on
+            the client.
         """
-        endpoint = f"/cells/{cell_spec_id}/parameterized_models"
-        response_data = self.client.post(endpoint, normalize_simulation_settings(data))
+        payload = normalize_parameters(normalize_simulation_settings(data))
+        if cell_spec_id is None:
+            endpoint = "/parameterized_models"
+            payload = {
+                **payload,
+                "project_id": resolve_project_id(
+                    self.client, payload.get("project_id")
+                ),
+            }
+        else:
+            endpoint = f"/cells/{cell_spec_id}/parameterized_models"
+        response_data = self.client.post(endpoint, payload)
         return ParameterizedModel(**response_data)
 
     def create_or_get(
@@ -211,7 +251,7 @@ class ParameterizedModelClient:
 
     def update(
         self,
-        cell_spec_id: str,
+        cell_spec_id: str | None,
         parameterized_model_id: str,
         data: dict[str, Any],
     ) -> ParameterizedModel:
@@ -219,8 +259,9 @@ class ParameterizedModelClient:
 
         Parameters
         ----------
-        cell_spec_id : str
-            The ID of the cell specification the model belongs to.
+        cell_spec_id : str | None
+            The ID of the cell specification the model belongs to, or ``None`` for
+            a model with no cell specification.
         parameterized_model_id : str
             The ID of the parameterized model to update.
         data : dict[str, Any]
@@ -234,25 +275,27 @@ class ParameterizedModelClient:
         ParameterizedModel
             The updated parameterized model object.
         """
-        endpoint = (
-            f"/cells/{cell_spec_id}/parameterized_models/{parameterized_model_id}"
-        )
+        endpoint = _item_endpoint(cell_spec_id, parameterized_model_id)
         response_data = self.client.patch(endpoint, normalize_simulation_settings(data))
         return ParameterizedModel(**response_data)
 
-    def delete(self, cell_spec_id: str, parameterized_model_id: str) -> None:
-        """Delete a parameterized model.
+    def delete(self, cell_spec_id: str | None, parameterized_model_id: str) -> None:
+        """Delete a parameterized model, addressed under its cell spec if it has one.
 
         Parameters
         ----------
-        cell_spec_id : str
-            The ID of the cell specification the model belongs to.
+        cell_spec_id : str | None
+            The cell specification the model belongs to, or ``None`` for a model
+            with no cell specification. A mismatch 404s.
         parameterized_model_id : str
             The ID of the parameterized model to delete.
+
+        Raises
+        ------
+        IonworksError
+            403 if the caller's project role may not delete parameterized models.
         """
-        self.client.delete(
-            f"/cells/{cell_spec_id}/parameterized_models/{parameterized_model_id}"
-        )
+        self.client.delete(_item_endpoint(cell_spec_id, parameterized_model_id))
 
     def get_parameter_values(self, parameterized_model_id: str) -> dict[str, Any]:
         """Get all parameter values from a parameterized model as JSON.

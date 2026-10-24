@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ionworks-api"
-version = "0.37.1"
+version = "0.38.0"
 description = "Python client for interacting with the Ionworks API"
 authors = []
 readme = "README.md"

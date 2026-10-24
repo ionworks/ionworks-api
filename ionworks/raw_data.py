@@ -80,7 +80,7 @@ class RawDataClient:
         Notes
         -----
         The file goes directly to storage through initiate/upload/confirm.
-        At or above 32 MiB it prefers S3 multipart; install
+        At or above 16 MiB it prefers S3 multipart; install
         ``ionworks-api[large-uploads]`` to enable that path. Without the extra,
         files up to 1 GiB use a single request.
         """

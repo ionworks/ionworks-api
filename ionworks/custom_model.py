@@ -11,14 +11,17 @@ import io
 import json
 import os
 import tempfile
-from typing import IO, Any, Literal
+from typing import IO, Any, Literal, NamedTuple
 
 from ._model_config import normalize_model_config
+from ._parameters import normalize_parameters
+from ._project_id import resolve_project_id
 from ._simulation_settings import normalize_simulation_settings
 from .errors import IonworksError
 from .models import (
     Model,
     PaginatedList,
+    ParameterizedModel,
     _build_endpoint,
     _build_filter_params,
     _parse_list_response,
@@ -27,6 +30,13 @@ from .models import (
 #: Allowed values for the ``chemistry`` field on uploaded custom models.
 #: Mirrors the ``ModelChemistry`` Literal on the backend.
 ModelChemistry = Literal["lithium_ion", "lithium_sulfur", "ecm", "generic"]
+
+
+class ZooImport(NamedTuple):
+    """The records :meth:`ModelClient.create_from_zoo` creates."""
+
+    model: Model
+    parameterized_model: ParameterizedModel
 
 
 class ModelClient:
@@ -104,6 +114,7 @@ class ModelClient:
         limit: int | None = None,
         offset: int | None = None,
         *,
+        project_id: str | None = None,
         name: str | None = None,
         name_exact: str | None = None,
         created_by_email: str | None = None,
@@ -114,7 +125,7 @@ class ModelClient:
         order_by: str | None = None,
         order: str | None = None,
     ) -> PaginatedList[Model]:
-        """List models with optional filtering.
+        """List a project's models with optional filtering.
 
         Parameters
         ----------
@@ -122,6 +133,9 @@ class ModelClient:
             Maximum number of models to return per page.
         offset : int | None, optional
             Number of models to skip for pagination.
+        project_id : str | None, optional
+            Project whose models to list. Defaults to the client's project
+            (``IONWORKS_PROJECT_ID``).
         name : str | None, optional
             Case-insensitive substring match on model name.
         name_exact : str | None, optional
@@ -145,7 +159,13 @@ class ModelClient:
         -------
         PaginatedList[Model]
             A list of model objects.
+
+        Raises
+        ------
+        ValueError
+            If no ``project_id`` is given and the client has no default.
         """
+        project_id = resolve_project_id(self.client, project_id)
         filter_params = _build_filter_params(
             name=name,
             name_exact=name_exact,
@@ -159,19 +179,25 @@ class ModelClient:
         )
         endpoint = _build_endpoint(
             self._BASE,
-            {"limit": limit, "offset": offset, **filter_params},
+            {
+                "project_id": project_id,
+                "limit": limit,
+                "offset": offset,
+                **filter_params,
+            },
         )
         response_data = self.client.get(endpoint)
         return _parse_list_response(response_data, Model)
 
     def create(self, data: dict[str, Any] | None = None) -> Model:
-        """Create a new model.
+        """Create a new model in a project.
 
         Parameters
         ----------
         data : dict[str, Any]
             Dictionary containing the model data. Required fields: ``name``,
-            ``config``. Optional fields: ``description``, ``pybamm_version``,
+            ``config``. Optional fields: ``project_id`` (defaults to the client's
+            project), ``description``, ``pybamm_version``,
             ``simulation_settings``.
 
             ``config`` may be a ``{"type": ...}`` dict or a built-in
@@ -207,9 +233,18 @@ class ModelClient:
         -------
         Model
             The newly created model object.
+
+        Raises
+        ------
+        ValueError
+            If ``data`` has no ``project_id`` and the client has no default.
         """
         endpoint = self._BASE
-        payload = normalize_model_config(normalize_simulation_settings(data))
+        # Copied so filling in the default project never mutates the caller's dict.
+        payload = {**normalize_model_config(normalize_simulation_settings(data))}
+        payload["project_id"] = resolve_project_id(
+            self.client, payload.get("project_id")
+        )
         response_data = self.client.post(endpoint, payload)
         return Model(**response_data)
 
@@ -220,8 +255,9 @@ class ModelClient:
         name: str,
         chemistry: ModelChemistry = "lithium_ion",
         description: str | None = None,
+        project_id: str | None = None,
     ) -> Model:
-        """Upload a custom PyBaMM model.
+        """Upload a custom PyBaMM model into a project.
 
         Serialises a ``pybamm.BaseModel`` subclass instance (or accepts an
         already-serialised JSON file) and POSTs it to
@@ -244,6 +280,9 @@ class ModelClient:
             chemistry-specific enrichment.
         description : str | None, optional
             Optional human-readable description.
+        project_id : str | None, optional
+            Project to upload into. Defaults to the client's project
+            (``IONWORKS_PROJECT_ID``).
 
         Returns
         -------
@@ -254,6 +293,8 @@ class ModelClient:
         ------
         IonworksError
             On any HTTP error from the upload endpoint.
+        ValueError
+            If no ``project_id`` is given and the client has no default.
 
         Notes
         -----
@@ -263,7 +304,11 @@ class ModelClient:
         ``save_custom_model(filename=...)`` (which handles the enum
         conversion) via a temp file that is unlinked after upload.
         """
-        data = {"name": name, "chemistry": chemistry}
+        data = {
+            "name": name,
+            "chemistry": chemistry,
+            "project_id": resolve_project_id(self.client, project_id),
+        }
         if description is not None:
             data["description"] = description
 
@@ -314,6 +359,156 @@ class ModelClient:
                 "Unexpected non-JSON response from /models/upload-custom"
             )
         return Model(**response)
+
+    def create_from_zoo(
+        self,
+        name: str,
+        *,
+        cell_spec_id: str | None = None,
+        options: dict[str, Any] | None = None,
+        model_kwargs: dict[str, Any] | None = None,
+        parameter_values: Any = None,
+        model_name: str | None = None,
+        parameterized_model_name: str | None = None,
+        description: str | None = None,
+        chemistry: ModelChemistry = "lithium_ion",
+        project_id: str | None = None,
+    ) -> ZooImport:
+        """Create a model and a parameterized model from the PyBaMM model zoo.
+
+        Builds the zoo model locally, uploads it as a custom model (see
+        :meth:`upload_custom`), then creates a parameterized model for it, under
+        ``cell_spec_id`` or in the project. The zoo is not a dependency of this package; install it
+        with ``pip install pybamm-model-zoo``, plus the model's ``zoo-<slug>``
+        extra if it has one. Under a cell specification, the backend overrides the
+        parameterized model's nominal capacity, voltage cut-offs, and current
+        with the specification's values.
+
+        Parameters
+        ----------
+        name : str
+            Registered zoo model name, one of ``pybamm_model_zoo.list_models()``
+            (e.g. ``"LinearisedSPM"``).
+        cell_spec_id : str | None, optional
+            Cell specification the parameterized model belongs to, in the same
+            project as the model. Defaults to None: the parameterized model has no
+            cell specification and keeps the parameter set's capacity and cut-offs.
+        options : dict[str, Any] | None, optional
+            Model options passed to the zoo model's constructor.
+        model_kwargs : dict[str, Any] | None, optional
+            Other constructor arguments for zoo models that take them, e.g.
+            ``{"num_physical_layers": 4}`` for ``MultiLayer3DThermalSPM``. See
+            ``help(pybamm_model_zoo.load(name))`` for a model's arguments.
+        parameter_values : pybamm.ParameterValues | str | dict | None, optional
+            Parameters for the parameterized model: a ``pybamm.ParameterValues``,
+            the name of a pybamm parameter set (e.g. ``"Chen2020"``), or an
+            already-serialized parameters dict. Defaults to the zoo model's
+            ``default_parameter_values``. A named set or ``ParameterValues`` is
+            passed through the model's ``apply_stack_scaling``, for zoo models
+            that have one, to add the model's own parameters; a dict is sent as
+            is.
+        model_name : str | None, optional
+            Display name for the model. Defaults to the zoo model's name.
+        parameterized_model_name : str | None, optional
+            Display name for the parameterized model. Defaults to ``model_name``.
+        description : str | None, optional
+            Description for both records. Defaults to the zoo entry's summary.
+        chemistry : ModelChemistry, optional
+            Chemistry tag for the uploaded model, as for :meth:`upload_custom`.
+            Defaults to ``"lithium_ion"``.
+        project_id : str | None, optional
+            Project to create the model in. Defaults to the client's project
+            (``IONWORKS_PROJECT_ID``).
+
+        Returns
+        -------
+        ZooImport
+            The created ``model`` and ``parameterized_model``.
+
+        Raises
+        ------
+        ImportError
+            If ``pybamm-model-zoo`` is not installed.
+        KeyError
+            If ``name`` is not a registered zoo model.
+        pybamm_model_zoo.ModelUnavailableError
+            If the model's ``zoo-<slug>`` extra is not installed.
+        pybamm_model_zoo.ManifestError
+            If the zoo entry's manifest is malformed.
+        ValueError
+            If no ``project_id`` is given and the client has no default.
+        IonworksError
+            If either record cannot be created. When the server rejects the
+            parameterized model (a 4xx), the uploaded model is deleted again, so a
+            retry does not duplicate it. On any other failure the outcome is
+            unknown, so the model is kept and the error notes its id.
+
+        Examples
+        --------
+        >>> zoo = client.model.create_from_zoo(
+        ...     "LinearisedSPM", cell_spec_id=spec.id, parameter_values="Chen2020"
+        ... )  # doctest: +SKIP
+        """
+        try:
+            import pybamm_model_zoo
+        except ImportError as e:
+            raise ImportError(
+                "create_from_zoo needs the PyBaMM model zoo: "
+                "pip install pybamm-model-zoo"
+            ) from e
+
+        # Fail on a missing project before the slow model build, not after it.
+        project_id = resolve_project_id(self.client, project_id)
+        entry = pybamm_model_zoo.info(name)
+        pybamm_model = entry.load()(options=options, **(model_kwargs or {}))
+
+        if parameter_values is None:
+            parameter_values = pybamm_model.default_parameter_values
+        elif not isinstance(parameter_values, dict):
+            import pybamm
+
+            if isinstance(parameter_values, str):
+                parameter_values = pybamm.ParameterValues(parameter_values)
+            # A stock set lacks the parameters some zoo models add of their own.
+            prepare = getattr(pybamm_model, "apply_stack_scaling", None)
+            if prepare is not None:
+                parameter_values = prepare(parameter_values.copy())
+        # Serialized before the upload, so a failure here leaves nothing behind.
+        parameter_values = normalize_parameters({"parameters": parameter_values})[
+            "parameters"
+        ]
+
+        model_name = model_name or entry.name
+        description = description if description is not None else entry.summary
+        model = self.upload_custom(
+            pybamm_model,
+            name=model_name,
+            chemistry=chemistry,
+            description=description,
+            project_id=project_id,
+        )
+        try:
+            parameterized_model = self.client.parameterized_model.create(
+                cell_spec_id,
+                {
+                    "name": parameterized_model_name or model_name,
+                    "model_id": model.id,
+                    "description": description,
+                    "parameters": parameter_values,
+                    "project_id": project_id,
+                },
+            )
+        except IonworksError as e:
+            # After a timeout or 5xx the PM may exist; deleting would cascade to it.
+            if e.status_code is not None and 400 <= e.status_code < 500:
+                self.delete(model.id)
+            else:
+                e.add_note(
+                    f"Model '{model_name}' was uploaded as {model.id}; the "
+                    "parameterized model may or may not have been created."
+                )
+            raise
+        return ZooImport(model=model, parameterized_model=parameterized_model)
 
     def serialize(
         self,

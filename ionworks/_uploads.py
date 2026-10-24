@@ -16,7 +16,8 @@ from .errors import IonworksError
 UPLOAD_TIMEOUT: tuple[float, float] = (10, 300)
 
 #: Bodies at or above this size prefer S3 multipart instead of a single PUT.
-UPLOAD_MULTIPART_THRESHOLD_BYTES: int = 32 * 1024 * 1024
+#: One part's size, so a single PUT is no slower than a part.
+UPLOAD_MULTIPART_THRESHOLD_BYTES: int = 16 * 1024 * 1024
 
 #: Largest body still worth handing to the single PUT when multipart is
 #: unavailable. Deliberately the conservative end of the observed 1.2-1.6 GB
@@ -24,14 +25,17 @@ UPLOAD_MULTIPART_THRESHOLD_BYTES: int = 32 * 1024 * 1024
 #: existed, so it must not hand the PUT path a body it is likely to drop.
 UPLOAD_SINGLE_PUT_MAX_BYTES: int = 1024 * 1024 * 1024
 
-#: Assumed throughput for the pre-flight credential-expiry check, from the
-#: serial measurement on 2026-08-09. Deliberately conservative: multipart is
-#: faster, so the check errs toward warning about uploads that would have
-#: succeeded. Revisit once multipart throughput is measured.
-UPLOAD_ASSUMED_THROUGHPUT_BYTES_PER_SEC: int = 9 * 1024 * 1024
+#: Pessimistic throughput for the credential-expiry pre-flight, so it errs
+#: toward warning.
+UPLOAD_ASSUMED_THROUGHPUT_BYTES_PER_SEC: int = 1024 * 1024
 
-#: Multipart part size, matching the backend's proven TransferConfig.
-UPLOAD_CHUNK_BYTES: int = 64 * 1024 * 1024
+#: Small parts, few in flight: storage's edge answers 524 to a slow request.
+UPLOAD_CHUNK_BYTES: int = 16 * 1024 * 1024
+UPLOAD_MAX_CONCURRENCY: int = 2
+
+UPLOAD_PART_MAX_ATTEMPTS: int = 3
+
+_GATEWAY_TIMEOUT_RETRY_DELAY_SECONDS: float = 1.0
 
 
 class _MultipartUnavailable(IonworksError):
@@ -277,6 +281,35 @@ def _split_timeout(
     return float(connect), float(read)
 
 
+def _retry_on_gateway_timeout(response, attempts, **_):
+    """Retry an S3 request the storage edge answered with 524.
+
+    botocore retries 504 but not the edge's non-standard 524, so without this one
+    slow part fails the whole file.
+
+    Parameters
+    ----------
+    response : tuple | None
+        ``(http_response, parsed)`` from botocore, or ``None`` when the request
+        raised instead.
+    attempts : int
+        Attempts made so far, including the one that just finished.
+
+    Returns
+    -------
+    float | None
+        Seconds to wait before retrying, or ``None`` to leave the decision to
+        botocore's own retry handler.
+    """
+    if (
+        response is not None
+        and response[0].status_code == 524
+        and attempts < UPLOAD_PART_MAX_ATTEMPTS
+    ):
+        return _GATEWAY_TIMEOUT_RETRY_DELAY_SECONDS * attempts
+    return None
+
+
 def _make_s3_client(mp, boto3, BotoConfig, timeout=None):
     """Build a boto3 S3 client for a multipart target. Separated for testing.
 
@@ -297,7 +330,7 @@ def _make_s3_client(mp, boto3, BotoConfig, timeout=None):
         A configured boto3 S3 client.
     """
     connect_timeout, read_timeout = _split_timeout(timeout)
-    return boto3.client(
+    client = boto3.client(
         "s3",
         endpoint_url=_normalize_url(mp.endpoint),
         region_name=mp.region,
@@ -306,23 +339,28 @@ def _make_s3_client(mp, boto3, BotoConfig, timeout=None):
         aws_session_token=mp.session_token,
         config=BotoConfig(
             s3={"addressing_style": "path"},
-            retries={"max_attempts": 3, "mode": "adaptive"},
+            retries={"max_attempts": UPLOAD_PART_MAX_ATTEMPTS, "mode": "adaptive"},
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
         ),
     )
+    # Not CompleteMultipartUpload: the origin may have finished it after the edge
+    # gave up, so a retry would answer NoSuchUpload for an object that exists.
+    for operation in ("CreateMultipartUpload", "UploadPart"):
+        client.meta.events.register_first(
+            f"needs-retry.s3.{operation}", _retry_on_gateway_timeout
+        )
+    return client
 
 
 def _check_credential_lifetime(mp, size_bytes: int) -> None:
     """Warn when the transfer looks likely to outlive its credential.
 
     This **warns rather than raises** for a transfer that merely looks too
-    slow. The estimate uses a deliberately pessimistic serial throughput, so
-    turning it into a hard gate would refuse uploads that multipart's parallel
-    connections would in fact complete: at 9 MB/s against a ~1 hour token it
-    caps out near 31 GB, far below the 500 GB the S3 path actually supports,
-    and re-running only mints another equally short-lived credential — there is
-    no action the caller could take to get past it.
+    slow. The estimate uses a deliberately pessimistic throughput, so turning
+    it into a hard gate would refuse uploads that would in fact complete, and
+    re-running only mints another equally short-lived credential — there is no
+    action the caller could take to get past it.
 
     An already-expired credential is different: that upload cannot succeed, and
     a fresh one is exactly one re-run away, so it still raises.
@@ -446,17 +484,9 @@ def _filesystem_path(body, size_bytes: int) -> str | None:
 
     Notes
     -----
-    s3transfer buffers each part of a *file object* into memory:
-    ``UploadSeekableInputManager`` reads every part into a fresh ``BytesIO``,
-    bounded only by ``max_in_memory_upload_chunks`` (10), which boto3's
-    ``TransferConfig`` does not expose -- about 640 MB resident at a 64 MiB
-    part size. Given a filename it uses deferred per-part file handles and
-    streams instead, which is what the backend's own uploader does.
-
-    The offset and on-disk size are both checked because ``Filename`` always
-    sends the whole file from byte 0: a handle positioned mid-file, or one
-    whose file changed size, would silently upload different bytes than the
-    ``size_bytes`` recorded on the record.
+    s3transfer buffers up to ten parts of a *file object* in memory, but streams
+    from a filename. ``Filename`` always sends the whole file from byte 0, so
+    the offset and on-disk size are checked to match ``size_bytes``.
     """
     name = getattr(body, "name", None)
     if not isinstance(name, str):
@@ -484,8 +514,9 @@ def _upload_multipart(
     """Upload via S3 multipart.
 
     Retries individual parts within this call via botocore's adaptive retry
-    mode. It does NOT persist the UploadId across calls: a failed transfer is
-    aborted, and re-running restarts from zero.
+    mode, plus a 524 from the storage edge. It does NOT persist the UploadId
+    across calls: a failed transfer is aborted, and re-running restarts from
+    zero.
 
     Parameters
     ----------
@@ -504,7 +535,7 @@ def _upload_multipart(
         whole transfer, so a generous read timeout no longer caps file size.
         Defaults to ``UPLOAD_TIMEOUT``.
     max_concurrency : int | None, optional
-        Caps parallel part uploads. Defaults to 10.
+        Caps parallel part uploads. Defaults to ``UPLOAD_MAX_CONCURRENCY``.
     force_multipart : bool, optional
         Uses a one-byte selector threshold so a signed-PUT timeout recovery
         cannot be routed back to PutObject by s3transfer.
@@ -539,7 +570,7 @@ def _upload_multipart(
     config = TransferConfig(
         multipart_threshold=1 if force_multipart else UPLOAD_MULTIPART_THRESHOLD_BYTES,
         multipart_chunksize=UPLOAD_CHUNK_BYTES,
-        max_concurrency=max_concurrency or 10,
+        max_concurrency=max_concurrency or UPLOAD_MAX_CONCURRENCY,
     )
     common = {
         "Bucket": mp.bucket,

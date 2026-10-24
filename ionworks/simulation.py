@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import time
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -25,6 +25,7 @@ from ._simulation_columns import (
 )
 from .errors import IonworksError
 from .job import JobResponse
+from .models import PaginatedList, _build_endpoint, _parse_list_response
 from .validators import DataFrame
 
 
@@ -202,7 +203,7 @@ class ProtocolSimulationBatchRequest(_StrictModel):
             "``design_parameters_doe`` when the runs are not a sampled design."
         ),
     )
-    experiment_parameters: dict[str, float] | None = Field(
+    experiment_parameters: dict[str, float | str] | None = Field(
         default=None,
         description=(
             "Experiment parameters for any inputs in the protocol. With "
@@ -265,6 +266,18 @@ class SimulationResponse(BaseModel):
 
     simulation_id: str = Field(description="Simulation UUID")
     job_id: str = Field(description="Job UUID")
+    protocol_id: str | None = Field(
+        default=None,
+        description="The saved protocol the simulation ran. For an inline "
+        "protocol this is the protocol it resolved to: an existing one with the "
+        "same content in the project, or a newly saved one.",
+    )
+    already_existed: bool = Field(
+        default=False,
+        description="True when an identical run (same model, protocol inputs, "
+        "design and options) already existed, finished or still running, and "
+        "was returned instead of starting a new one.",
+    )
 
 
 def _design_parameters_to_single_row_doe(
@@ -581,16 +594,27 @@ class SimulationClient:
                 f"list, got {type(response_data).__name__}"
             )
             raise ValueError(msg)
-        return [SimulationResponse(**item) for item in response_data]
+        return [
+            SimulationResponse(**{**item, "protocol_id": template_id})
+            for item in response_data
+        ]
 
     def list(
         self,
         parameterized_model_id: str | None = None,
         study_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """List simulations filtered by parameterized model or study.
+        *,
+        protocol_id: str | None = None,
+        state: Literal["queued", "running", "completed", "failed"] | None = None,
+        summary: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]] | PaginatedList[dict[str, Any]]:
+        """List simulations of a parameterized model, a study, or a protocol.
 
-        Exactly one of ``parameterized_model_id`` or ``study_id`` must be provided.
+        Scope by at most one of ``parameterized_model_id`` or ``study_id``,
+        optionally narrowed to one saved protocol with ``protocol_id``; or by
+        ``protocol_id`` alone. Newest first.
 
         Parameters
         ----------
@@ -598,34 +622,57 @@ class SimulationClient:
             Filter simulations belonging to this parameterized model.
         study_id : str, optional
             Filter simulations assigned to this study.
+        protocol_id : str, optional
+            Filter simulations that ran this saved protocol. Combines with
+            either of the other two, e.g. every run of one model on one protocol.
+        state : {"queued", "running", "completed", "failed"}, optional
+            Only runs in this state. ``failed`` includes canceled runs.
+        summary : bool, optional
+            Leave out each run's ``metrics``, which are most of a listing's
+            size. Defaults to False.
+        limit : int, optional
+            Maximum simulations to return (1-1000). The server defaults to 100.
+        offset : int, optional
+            Number of simulations to skip.
 
         Returns
         -------
-        list[dict[str, Any]]
-            List of simulation summary objects.
+        list[dict[str, Any]] | PaginatedList[dict[str, Any]]
+            Simulation summaries. A :class:`PaginatedList` carrying ``.total``
+            when ``limit`` or ``offset`` is given, otherwise a plain list.
+
+        Raises
+        ------
+        ValueError
+            If both ``parameterized_model_id`` and ``study_id`` are given, or
+            none of the three scopes is.
         """
-        if bool(parameterized_model_id) == bool(study_id):
+        if parameterized_model_id and study_id:
             raise ValueError(
-                "Exactly one of 'parameterized_model_id' or 'study_id' must be provided."
+                "Pass at most one of 'parameterized_model_id' or 'study_id'; "
+                "'protocol_id' may be combined with either."
             )
-        params: dict[str, str] = {}
-        if parameterized_model_id:
-            params["parameterized_model_id"] = parameterized_model_id
-        else:
-            params["study_id"] = study_id  # type: ignore[assignment]
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        endpoint = f"/simulations?{query}"
-        response_data = self.client.get(endpoint)
-        # The endpoint returns {simulations: [...], model_scalar_parameters: {...}}
-        if isinstance(response_data, dict) and "simulations" in response_data:
-            return cast(list[dict[str, Any]], response_data["simulations"])
-        if isinstance(response_data, list):
-            return response_data
-        msg = (
-            f"Unexpected response format from {endpoint}: expected a dict with "
-            f"'simulations' key or a list, got {type(response_data).__name__}"
+        if not (parameterized_model_id or study_id or protocol_id):
+            raise ValueError(
+                "Provide 'parameterized_model_id', 'study_id' or 'protocol_id'."
+            )
+        endpoint = _build_endpoint(
+            "/simulations",
+            {
+                "parameterized_model_id": parameterized_model_id,
+                "study_id": study_id,
+                "experiment_template_id": protocol_id,
+                "state": state,
+                "summary": "true" if summary else None,
+                "limit": limit,
+                "offset": offset,
+            },
         )
-        raise ValueError(msg)
+        # The endpoint returns {simulations: [...], model_scalar_parameters: {...}}
+        page = _parse_list_response(self.client.get(endpoint), dict, key="simulations")
+        if limit is None and offset is None:
+            return page.items
+        return page
 
     def get(self, simulation_id: str) -> dict[str, Any]:
         """Get a specific simulation by ID.

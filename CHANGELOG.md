@@ -9,6 +9,25 @@ see [docs.ionworks.com/changelog](https://docs.ionworks.com/changelog).
 
 <!-- New release sections are prepended below by the release-packages skill. -->
 
+## [0.38.0] - 2026-10-23
+
+### Added
+- `client.model_builder` manages recipes that turn a cell specification into a model's parameters: check a cell spec against one, preview a mapping, `dry_run` it, and build or save a parameterized model (#2111)
+- `client.model.create_from_zoo(name, cell_spec_id=...)` uploads a PyBaMM model-zoo model and creates its parameterized model in one call (#2485)
+- `client.parameterized_model.create(None, data)` creates a parameterized model with no cell spec, in a project; `parameters` also accepts a `pybamm.ParameterValues` or a parameter-set name (#2485)
+- `client.simulation.list()` takes `protocol_id`, `state` (`queued`, `running`, `completed` or `failed`), `summary`, `limit` and `offset`; `protocol_id` combines with `parameterized_model_id` or `study_id`, and with `limit` or `offset` it returns a `PaginatedList` carrying `.total` (#2425)
+- Simulation records carry `protocol_id` and `protocol_name` (#2425)
+- `SimulationResponse.already_existed` is True when an identical run, finished or still running, was returned instead of starting a new one; `SimulationResponse.protocol_id` is the saved protocol the run used (#2425)
+- `client.parameterized_model.list_by_project(summary=True)` lists models without their parameter values (#2425)
+
+### Changed
+- Models belong to a project: `client.model.list()` lists the client's project unless given `project_id=`, and `create` and `upload_custom` default to the client's project (#2332)
+- `client.search.query(project_id=...)` also restricts parameterized models, protocols and cell data to that project, keeping rows with no project; before, it narrowed only studies, optimizations and pipelines (#2425)
+- `client.protocol.convert(..., target="biologic_bttest")` needs `nominal_capacity_ah` when the protocol uses C-rate steps or cutoffs, as `neware` does: BioLogic C-rates are now written as absolute currents (#2542)
+
+### Fixed
+- Large uploads no longer fail when throughput to storage is low: multipart uploads send 16 MiB parts two at a time, and a part that times out is retried (#2468)
+
 ## [0.37.1] - 2026-10-20
 
 ### Changed

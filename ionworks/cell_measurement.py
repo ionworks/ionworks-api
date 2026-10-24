@@ -137,12 +137,9 @@ PROCESSING_POLL_SECONDS = 2.0
 #: Worker threads used to upload a measurement's attachments in parallel.
 ATTACHMENT_POOL_WORKERS = 4
 
-#: Multipart connections allowed per attachment upload. Attachments already run
-#: in a thread pool and multipart defaults to 10 connections each, so without a
-#: cap the product would be ATTACHMENT_POOL_WORKERS x 10 open connections. The
-#: two constants are only meaningful together — keep them adjacent so a change
-#: to one prompts a look at the other.
-ATTACHMENT_MAX_CONCURRENCY = 3
+#: Multipart connections per attachment upload. Parts in flight are
+#: ATTACHMENT_POOL_WORKERS x this, and each must beat the storage edge's timeout.
+ATTACHMENT_MAX_CONCURRENCY = 1
 
 
 def _processing_failure_message(failures: dict[str, str], total: int) -> str:
